@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>법조문 자동 추출·검색 · 고급버전</title>
+<style>
+  :root{--bg:#0b1020;--panel:#11172c;--muted:#8492b5;--line:#1f2a49;--accent:#5b8cff;--txt:#e6ecff}
+  html,body{height:100%}
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;background:var(--bg);color:var(--txt)}
+  .wrap{max-width:1200px;margin:0 auto;padding:24px}
+  h1{font-size:1.35rem;margin:0 0 8px}
+  .hint{color:var(--muted);font-size:.95rem;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+  textarea{width:100%;min-height:210px;padding:12px;border-radius:12px;border:1px solid var(--line);background:#0f1731;color:var(--txt)}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0}
+  input[type="text"]{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0f1731;color:#e6ecff;min-width:260px}
+  button{padding:10px 14px;border:0;border-radius:10px;background:var(--accent);color:#fff;cursor:pointer}
+  button.secondary{background:#445b9c}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  .tag{display:inline-flex;gap:6px;align-items:center;padding:2px 8px;border:1px solid var(--line);background:#0f1731;border-radius:999px;color:#c9d6ff;font-size:.8rem}
+  .result h2{margin:0 0 8px}
+  ol{margin:0;padding-left:20px}
+  .k{color:#9fb4ff}
+  .small{font-size:.9rem;color:#9aa8ce}
+  .item{padding:10px;border-top:1px dashed var(--line)}
+  .monos{font-family:ui-monospace,Menlo,Consolas,monospace;background:#0f1731;border-radius:6px;padding:0 6px}
+  .render{margin-top:8px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .render .hdr{display:flex;justify-content:space-between;align-items:center;background:#0f1731;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .render .body{padding:10px;max-height:360px;overflow:auto;background:#0c1330}
+  a{color:#9ec1ff}
+  .tests{margin-top:18px}
+  .pass{color:#22c55e}
+  .fail{color:#ef4444}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>법조문 자동 추출·검색 · <span class="k">고급버전</span></h1>
+  <div class="hint">본문의 법령 인용을 인식하고, <b>같은 법/동법 시행령/이 법·이 영·이 규칙</b> 같은 맥락 참조까지 해석합니다. <b>제○조의○</b>·<b>부칙</b>·<b>별표</b> 인용도 처리하며, <b>프록시</b>를 제공하면 조문 본문을 화면에 바로 렌더링합니다.</div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <label for="input"><b>본문 입력</b></label>
+        <textarea id="input" placeholder="예) 유아교육법 제8조의2 제4항, 같은 법 시행령 제9조 제3항 및 별표 1에 따라 ..."></textarea>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="row"><label>OC(이메일 @ 앞부분)</label><input id="oc" type="text" placeholder="예: g4c" value="OC_ID_HERE" /></div>
+        <div class="row"><label>프록시(선택, CORS 우회)</label><input id="proxy" type="text" placeholder="예: https://your-worker.example.com/" /></div>
+        <div class="row"><button id="run">추출·검색</button><button class="secondary" id="clear">지우기</button><button class="secondary" id="runTests">테스트 실행</button></div>
+        <div class="small">• 브라우저 CORS 때문에 응답을 읽지 못할 수 있습니다. 이때도 링크는 생성됩니다. 프록시를 지정하면 본문 렌더링이 활성화됩니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="foundBox">
+    <h2>추출된 인용</h2>
+    <ol id="foundList"></ol>
+  </div>
+
+  <div class="card result" id="resBox">
+    <h2>검색 결과 (위에서부터 순서대로 표시)</h2>
+    <ol id="resList"></ol>
+  </div>
+
+  <div class="card tests">
+    <h2>내장 테스트</h2>
+    <div id="testOutput" class="small">[테스트 대기 중]</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  /** ===================== 상수/도우미 ===================== **/
+  const DRF = 'https://www.law.go.kr/DRF';
+  let lastAuthFail = false; // 직전 DRF 호출에서 인증오류 감지 여부
+
+  const enc = s => encodeURIComponent(s);
+  const byId = id => document.getElementById(id);
+
+  function buildURL(path, params){
+    const u = new URL(DRF + path);
+    Object.entries(params).forEach(([k,v])=>{ if(v!=null && v!=='') u.searchParams.set(k,v); });
+    return u.toString();
+  }
+  function withProxy(url){
+    const p = byId('proxy')?.value?.trim();
+    if(!p) return url;
+    let base = p; if(!base.endsWith('/')) base += '/';
+    if(!base.includes('?')) base += '?';
+    return base + 'url=' + enc(url);
+  }
+  function isAuthFailText(txt){ return /사용자인증에 실패하였습니다/.test(txt||''); }
+  function publicSearchURL(name){ return 'https://www.law.go.kr/LSW/lsSc.do?menuId=1&query=' + enc(name); }
+  function publicLawURL(name){ return 'https://www.law.go.kr/법령/' + enc(name); }
+
+  async function fetchText(url){
+    const r = await fetch(withProxy(url));
+    const text = await r.text();
+    return { ok: r.ok, status: r.status, text, ct: (r.headers.get('content-type')||'') };
+  }
+
+  /** ===================== 고급 인용 추출 ===================== **/
+  const LAW_BASE = `[가-힣A-Za-z0-9·ㆍ\\s]+?법`;
+  const LAW_EO   = `(?:시행령|시행규칙)`;
+  const LAW_FULL = `(${LAW_BASE}(?: ${LAW_EO})?)`;
+  const D   = `\\d+`;
+  const MOK = `([가-하])목`;
+  const JO  = `제\\s*(${D})(?:\\s*조(?:의\\s*(${D}))?)?`;
+  const HANG= `(?:\\s*제?\\s*(${D})\\s*항)?`;
+  const HO  = `(?:\\s*제?\\s*(${D})\\s*호)?`;
+  const MOKRE = `(?:\\s*(${MOK}))?`;
+  const EXPL_RE = new RegExp(`${LAW_FULL}\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
+  const QUOTED_RE = /「\s*([가-힣A-Za-z0-9·ㆍ\s]+?법(?:\s*(?:시행령|시행규칙))?)\s*」\s*제\s*(\d+)\s*조(?:\s*의\s*(\d+))?(?:\s*제?\s*(\d+)\s*항)?(?:\s*제?\s*(\d+)\s*호)?(?:\s*([가-하])\s*목)?/g;
+  const CTX_KEY = {
+    BASE: /(같은 법|이 법)/g,
+    SL: /(동법 시행령|같은 법 시행령|이 영|동 시행령)/g,
+    SK: /(동법 시행규칙|같은 법 시행규칙|이 규칙|동 규칙)/g
+  };
+  const BYEOLPYO_RE = /(?:별표|[별附]표)\s*(\d+)?/g;
+  const BUCHIK_RE   = /부칙\s*(\d+)?/g;
+
+  function tokenizeForContext(text){
+    return text.replace(/[\u00A0\t\r\n]+/g,' ').split(/(?:[.!?。]|[)\]\}])\s+/);
+  }
+  function pad6(n){ return String(parseInt(n,10)).padStart(6,'0'); }
+  function resolveContextualName(token, lastBase){
+    if(CTX_KEY.BASE.test(token)) return lastBase?.법 || null;
+    if(CTX_KEY.SL.test(token))   return lastBase?.영 || (lastBase?.법 ? lastBase.법 + '시행령' : null);
+    if(CTX_KEY.SK.test(token))   return lastBase?.규 || (lastBase?.법 ? lastBase.법 + '시행규칙' : null);
+    return null;
+  }
+  function pushUnique(seen, arr, obj){
+    const key = [obj.lawName, obj.jo||'', obj.joi||'', obj.hang||'', obj.ho||'', obj.mok||'', obj.kind||''].join('|');
+    if(seen.has(key)) return; seen.add(key); arr.push(obj);
+  }
+  function extractCitationsAdvanced(text){
+    const tokens = tokenizeForContext(text);
+    const cites = [];
+    const seen = new Set();
+    let ctx = { 법:null, 영:null, 규:null };
+    for(const t of tokens){
+      // (0) 법령명 단독
+      let m0; const LAW_NAME_ONLY_RE = new RegExp(LAW_FULL, 'g');
+      while((m0 = LAW_NAME_ONLY_RE.exec(t))){
+        const [raw, lawNameRaw] = m0;
+        const lawName = lawNameRaw.replace(/[「」\[\](){}\s]/g,'');
+        ctx.법 = lawName; ctx.영 = lawName + '시행령'; ctx.규 = lawName + '시행규칙';
+        pushUnique(seen, cites, { raw, lawName, kind:'lawOnly' });
+      }
+      // (1) 따옴표형 인용
+      let q; while((q = QUOTED_RE.exec(t))){
+        const [raw, lawRaw, joNum, joUi, hang, ho, mokChar] = q;
+        const lawName = lawRaw.replace(/[「」\[\](){}\s]/g,'');
+        pushUnique(seen, cites, { raw, lawName, jo: pad6(joNum), joi: joUi?pad6(joUi):null, hang: hang?pad6(hang):null, ho: ho?pad6(ho):null, mok: mokChar||null, kind:'article' });
+        if(/시행령$/.test(lawName)){ ctx.영 = lawName; ctx.법 = lawName.replace(/시행령$/, ''); }
+        else if(/시행규칙$/.test(lawName)){ ctx.규 = lawName; ctx.법 = lawName.replace(/시행규칙$/, ''); }
+        else { ctx.법 = lawName; ctx.영 = lawName + '시행령'; ctx.규 = lawName + '시행규칙'; }
+      }
+      // (2) 명시적 인용
+      let m; while((m = EXPL_RE.exec(t))){
+        const [raw, lawNameRaw, joNum, joUi, hang, ho, mokAll] = m;
+        const lawName = lawNameRaw.replace(/[「」\[\](){}\s]/g,'');
+        pushUnique(seen, cites, { raw, lawName, jo: joNum?pad6(joNum):null, joi: joUi?pad6(joUi):null, hang: hang?pad6(hang):null, ho: ho?pad6(ho):null, mok: mokAll?mokAll.match(/[가-하]/)?.[0]||null:null, kind:'article' });
+        if(/시행령$/.test(lawName)){ ctx.영 = lawName; ctx.법 = lawName.replace(/시행령$/, ''); }
+        else if(/시행규칙$/.test(lawName)){ ctx.규 = lawName; ctx.법 = lawName.replace(/시행규칙$/, ''); }
+        else { ctx.법 = lawName; ctx.영 = lawName + '시행령'; ctx.규 = lawName + '시행규칙'; }
+      }
+      // (3) 맥락 참조
+      const CTX_RE = new RegExp(`((?:같은 법|이 법|동법 시행령|같은 법 시행령|이 영|동 시행령|동법 시행규칙|같은 법 시행규칙|이 규칙|동 규칙))\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
+      while((m = CTX_RE.exec(t))){
+        const [raw, ctxWord, joNum, joUi, hang, ho, mokAll] = m;
+        const resolved = resolveContextualName(ctxWord, ctx);
+        if(!resolved) continue;
+        const lawName = resolved.replace(/\s/g,'');
+        pushUnique(seen, cites, { raw, lawName, jo: joNum?pad6(joNum):null, joi: joUi?pad6(joUi):null, hang: hang?pad6(hang):null, ho: ho?pad6(ho):null, mok: mokAll?mokAll.match(/[가-하]/)?.[0]||null:null, kind:'article' });
+      }
+      // (4) 별표/부칙
+      let bp; while((bp = BYEOLPYO_RE.exec(t))){
+        const target = ctx.법 || ctx.영 || ctx.규; if(!target) continue;
+        pushUnique(seen, cites, { raw: bp[0], lawName: target.replace(/\s/g,''), kind:'annex', annexNo: bp[1]||null });
+      }
+      let bc; while((bc = BUCHIK_RE.exec(t))){
+        const target = ctx.법 || ctx.영 || ctx.규; if(!target) continue;
+        pushUnique(seen, cites, { raw: bc[0], lawName: target.replace(/\s/g,''), kind:'supplement', suppNo: bc[1]||null });
+      }
+    }
+    return cites;
+  }
+
+  /** ===================== DRF API ===================== **/
+  async function searchLawID(oc, lawName){
+    lastAuthFail = false;
+    const url = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'JSON', search:'1', query:lawName, display:7 });
+    try{
+      const { ok, status, text, ct } = await fetchText(url);
+      if(isAuthFailText(text) || status===401 || status===403){ lastAuthFail = true; return null; }
+      // 일부 환경은 ct가 text/html이라도 JSON 문자열을 담아옵니다.
+      let data = null; try{ data = JSON.parse(text); }catch(e){ /* not json */ }
+      if(data && Array.isArray(data.law) && data.law.length){
+        const clean = s=> (s||'').replace(/\s+/g,'');
+        const exact = data.law.find(x=> clean(x.법령명한글)===clean(lawName));
+        return (exact || data.law[0]).법령ID;
+      }
+    }catch(e){ console.warn('searchLawID', e); }
+    return null;
+  }
+  function buildLawJoSubURL(oc,id,item){
+    const p1 = new URL(DRF + '/lawService.do');
+    const p2 = new URL(DRF + '/lawService.do');
+    const base = { OC:oc, target:'lawjosub', type:'HTML', ID:id };
+    Object.entries(base).forEach(([k,v])=>{ p1.searchParams.set(k,v); p2.searchParams.set(k,v); });
+    if(item.jo){ p1.searchParams.set('JO',item.jo); p2.searchParams.set('JO',item.jo); }
+    if(item.joi){ p2.searchParams.set('JOSUB',item.joi); }
+    if(item.hang){ p1.searchParams.set('HANG',item.hang); p2.searchParams.set('HANG',item.hang); }
+    if(item.ho){ p1.searchParams.set('HO',item.ho); p2.searchParams.set('HO',item.ho); }
+    if(item.mok){ p1.searchParams.set('MOK',item.mok); p2.searchParams.set('MOK',item.mok); }
+    return [p1.toString(), p2.toString()];
+  }
+  function buildLawFullHTMLURL(oc,id){ return buildURL('/lawService.do', { OC:oc, target:'law', type:'HTML', ID:id }); }
+
+  /** ===================== 렌더링 ===================== **/
+  function addFoundItem(el, it){
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="tag">${it.lawName}</span> <span class="monos">${(it.raw||'').trim()}</span>`;
+    el.appendChild(li);
+  }
+  function wrapRender(title, inner){
+    return `<div class="render"><div class="hdr"><div>${title}</div></div><div class="body">${inner}</div></div>`;
+  }
+
+  async function handleRun(){
+    const oc      = byId('oc').value.trim();
+    const text    = byId('input').value;
+    const foundUl = byId('foundList');
+    const resUl   = byId('resList');
+    foundUl.innerHTML = ''; resUl.innerHTML = '';
+
+    if(!text.trim()){ alert('본문을 입력해 주세요.'); return; }
+    if(!oc || oc==='OC_ID_HERE'){ alert('OC(이메일 @ 앞부분)를 입력해 주세요.'); return; }
+
+    const items = extractCitationsAdvanced(text);
+    // 사용자가 요청: 조/항/호/목/부칙/별표 등으로 특정 가능한 인용만 표시
+    const filtered = items.filter(it => it.kind==='article' || it.kind==='annex' || it.kind==='supplement');
+    if(!filtered.length){ foundUl.innerHTML = '<li>특정 가능한 법조문 인용을 찾지 못했습니다. (예: "○○법 제3조의2 제1항" 또는 "「○○법」 제2조제1항" 또는 "별표 1")</li>'; return; }
+    filtered.forEach(it=> addFoundItem(foundUl, it));
+
+    for(const it of filtered){
+      const li = document.createElement('li'); li.className='item';
+      li.innerHTML = `<div><b>${it.raw||it.lawName}</b> <span class="small">(${it.lawName})</span><div class="small">검색 중...</div></div>`;
+      resUl.appendChild(li);
+
+      const lawId = await searchLawID(oc, it.lawName);
+      if(!lawId){
+        const publicSearch = publicSearchURL(it.lawName);
+        const publicDirect = publicLawURL(it.lawName);
+        const drfList = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'HTML', search:'1', query:it.lawName });
+        li.innerHTML = `<div><b>${it.raw||it.lawName}</b> <span class="small">(${it.lawName})</span></div>
+          <div class="small">${ lastAuthFail ? 'API 인증 실패(OC 미승인/만료/오입력 가능). 퍼블릭 링크를 제공합니다.' : '법령ID 검색 실패(CORS/무일치). 퍼블릭 링크를 제공합니다.' }</div>
+          <div>• 퍼블릭 검색: <a target="_blank" rel="noopener" href="${publicSearch}">국가법령정보(사이트) 검색</a></div>
+          <div>• 법령 페이지(추정): <a target="_blank" rel="noopener" href="${publicDirect}">${it.lawName}</a></div>
+          <div class="small">(참고) DRF 목록: <a target="_blank" rel="noopener" href="${drfList}">lawSearch</a></div>`;
+        continue;
+      }
+
+      const human = 'https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq='+lawId;
+
+      if(it.kind==='article'){
+        const [u1,u2] = buildLawJoSubURL(oc, lawId, it);
+        let rendered = '';
+        try{
+          if(byId('proxy').value.trim()){
+            let html = (await fetchText(u1)).text;
+            if((!html || html.length<60) && it.joi){ html = (await fetchText(u2)).text; }
+            if(html && html.length>60){ rendered = wrapRender(`${it.lawName} · ${it.raw}`, html); }
+          }
+        }catch(e){ console.warn('render fail', e); }
+
+        li.innerHTML = `<div><b>${it.raw}</b> <span class="small">(${it.lawName})</span></div>
+          <div class="small">법령ID: ${lawId}</div>
+          <div>• API: <a target="_blank" rel="noopener" href="${u1}">lawjosub(HTML)</a> | <a target="_blank" rel="noopener" href="${u1.replace('type=HTML','type=XML')}">XML</a> | <a target="_blank" rel="noopener" href="${u1.replace('type=HTML','type=JSON')}">JSON</a></div>
+          ${it.joi?`<div>• 보조 API(조의): <a target="_blank" rel="noopener" href="${u2}">lawjosub(JOSUB)</a></div>`:''}
+          <div>• 원문: <a target="_blank" rel="noopener" href="${human}">상세 페이지</a></div>
+          ${rendered||''}`;
+      } else if(it.kind==='annex' || it.kind==='supplement' || it.kind==='lawOnly'){
+        const fullURL = buildLawFullHTMLURL(oc, lawId);
+        const label = it.kind==='annex' ? `별표 ${it.annexNo||''}` : (it.kind==='supplement' ? `부칙 ${it.suppNo||''}` : '전체 본문');
+        let rendered = '';
+        try{
+          if(byId('proxy').value.trim()){
+            const html = (await fetchText(fullURL)).text;
+            if(html && html.length>120){
+              if(it.kind==='annex'){
+                const idx = html.indexOf('별표'); if(idx>=0){ rendered = wrapRender(`${it.lawName} · ${label}`, html.substring(Math.max(0,idx-400), Math.min(html.length, idx+1200))); }
+              }else if(it.kind==='supplement'){
+                const idx2 = html.indexOf('부칙'); if(idx2>=0){ rendered = wrapRender(`${it.lawName} · ${label}`, html.substring(Math.max(0,idx2-400), Math.min(html.length, idx2+1200))); }
+              }else{
+                rendered = wrapRender(`${it.lawName} · 전체 본문`, html.substring(0,2000));
+              }
+            }
+          }
+        }catch(e){ console.warn('render2 fail', e); }
+
+        li.innerHTML = `<div><b>${label||it.lawName}</b> <span class="small">(${it.lawName})</span></div>
+          <div class="small">법령ID: ${lawId}</div>
+          <div>• 전체 본문: <a target="_blank" rel="noopener" href="${fullURL}">law(HTML)</a> | 원문: <a target="_blank" rel="noopener" href="${human}">상세 페이지</a></div>
+          ${rendered||''}`;
+      }
+    }
+  }
+
+  /** ===================== 바인딩 (DOMContentLoaded) ===================== **/
+  document.addEventListener('DOMContentLoaded', function(){
+    const runBtn   = byId('run');
+    const clearBtn = byId('clear');
+    const testsBtn = byId('runTests');
+    if(runBtn)   runBtn.addEventListener('click', handleRun);
+    if(clearBtn) clearBtn.addEventListener('click', ()=>{ byId('foundList').innerHTML=''; byId('resList').innerHTML=''; });
+    if(testsBtn) testsBtn.addEventListener('click', runBuiltInTests);
+  });
+
+  /** ===================== 내장 테스트(기존 케이스 유지) ===================== **/
+  function expect(name, cond){ return (cond?`✅ <span class="pass">PASS</span>`:`❌ <span class="fail">FAIL</span>`) + ` — ${name}`; }
+  function runBuiltInTests(){
+    const out = byId('testOutput');
+    const sample = [
+      '사립학교법',
+      '「유아교육법」 제2조제2호, 「초·중등교육법」 제2조 및 「고등교육법」 제2조를 따른다.',
+      '같은 법 시행령 제9조의2 제1항을 적용한다.',
+      '또한 별표 1과 부칙 1을 참고한다.'
+    ].join(' ');
+    const citesAll = extractCitationsAdvanced(sample);
+    const cites = citesAll.filter(it=> it.kind==='article' || it.kind==='annex' || it.kind==='supplement');
+
+    const noLawOnly = cites.every(c=> c.kind!=='lawOnly');
+    const hasU = cites.some(c=> c.lawName==='유아교육법' && c.ho==='000002');
+    const hasC = cites.some(c=> c.lawName==='초·중등교육법' && c.jo==='000002');
+    const hasH = cites.some(c=> c.lawName==='고등교육법' && c.jo==='000002');
+    const hasAnnex = cites.some(c=> c.kind==='annex');
+    const hasSupp = cites.some(c=> c.kind==='supplement');
+
+    const first3 = cites.slice(0,3).map(x=>x.lawName).join(',');
+    const orderOk = first3 === '유아교육법,초·중등교육법,고등교육법';
+
+    const noise = '학교법인, 공공단체 외의 법, 일반적 의미의 사립학교법 등의 용어가 쓰였으나 특정 조항 없음.';
+    const noiseOut = extractCitationsAdvanced(noise).filter(it=> it.kind==='article' || it.kind==='annex' || it.kind==='supplement');
+
+    out.innerHTML = [
+      expect('법령명 단독은 제외(no lawOnly)', noLawOnly),
+      expect('유아교육법 제2조제2호 포함', hasU),
+      expect('초·중등교육법 제2조 포함', hasC),
+      expect('고등교육법 제2조 포함', hasH),
+      expect('별표 인식', hasAnnex),
+      expect('부칙 인식', hasSupp),
+      expect('등장 순서 유지(유아→초중등→고등)', orderOk),
+      expect('노이즈 텍스트에서 아무 것도 추출하지 않음', noiseOut.length===0),
+      `<div class=\"small\">총 추출 수(필터 후): ${cites.length}</div>`
+    ].join('<br/>');
+
+    byId('input').value = sample;
+  }
+})();
+</script>
+</body>
+</html>
