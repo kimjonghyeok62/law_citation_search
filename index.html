@@ -79,6 +79,7 @@
 
   /** ===================== 상수/도우미 ===================== **/
   const DRF = 'https://www.law.go.kr/DRF';
+  const DEFAULT_PROXY = 'https://api.allorigins.win/raw?url=';
   let lastAuthFail = false; // 직전 DRF 호출에서 인증오류 감지 여부
 
   const enc = s => encodeURIComponent(s);
@@ -89,21 +90,30 @@
     Object.entries(params).forEach(([k,v])=>{ if(v!=null && v!=='') u.searchParams.set(k,v); });
     return u.toString();
   }
-  function withProxy(url){
-    const p = byId('proxy')?.value?.trim();
-    if(!p) return url;
-    let base = p; if(!base.endsWith('/')) base += '/';
-    if(!base.includes('?')) base += '?';
-    return base + 'url=' + enc(url);
-  }
   function isAuthFailText(txt){ return /사용자인증에 실패하였습니다/.test(txt||''); }
   function publicSearchURL(name){ return 'https://www.law.go.kr/LSW/lsSc.do?menuId=1&query=' + enc(name); }
   function publicLawURL(name){ return 'https://www.law.go.kr/법령/' + enc(name); }
 
   async function fetchText(url){
-    const r = await fetch(withProxy(url));
-    const text = await r.text();
-    return { ok: r.ok, status: r.status, text, ct: (r.headers.get('content-type')||'') };
+    const custom = byId('proxy')?.value?.trim();
+    const tries = [];
+    if(custom){
+      let base = custom; if(!base.endsWith('/')) base += '/';
+      if(!base.includes('?')) base += '?';
+      tries.push(base + 'url=' + enc(url));
+    } else {
+      tries.push(url, DEFAULT_PROXY + enc(url));
+    }
+    for(const u of tries){
+      try {
+        const r = await fetch(u);
+        const text = await r.text();
+        return { ok: r.ok, status: r.status, text, ct: (r.headers.get('content-type')||'') };
+      } catch(e) {
+        // try next option
+      }
+    }
+    return { ok:false, status:0, text:'', ct:'' };
   }
 
   /** ===================== 고급 인용 추출 ===================== **/
