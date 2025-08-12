@@ -104,16 +104,19 @@
     } else {
       tries.push(url, DEFAULT_PROXY + enc(url));
     }
+    let lastFail = { ok:false, status:0, text:'', ct:'' };
     for(const u of tries){
       try {
         const r = await fetch(u);
         const text = await r.text();
-        return { ok: r.ok, status: r.status, text, ct: (r.headers.get('content-type')||'') };
+        const info = { ok: r.ok, status: r.status, text, ct: (r.headers.get('content-type')||'') };
+        if(r.ok) return info;
+        lastFail = info; // keep last failure and try next
       } catch(e) {
-        // try next option
+        console.warn('fetch', u, 'error', e);
       }
     }
-    return { ok:false, status:0, text:'', ct:'' };
+    return lastFail;
   }
 
   /** ===================== 고급 인용 추출 ===================== **/
