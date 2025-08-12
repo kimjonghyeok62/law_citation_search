@@ -12,7 +12,7 @@
   h1{font-size:1.35rem;margin:0 0 8px}
   .hint{color:var(--muted);font-size:.95rem;margin-bottom:16px}
   .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
-  textarea{width:100%;min-height:210px;padding:12px;border-radius:12px;border:1px solid var(--line);background:#0f1731;color:var(--txt)}
+  textarea{width:100%;min-height:210px;padding:12px;border-radius:12px;border:1px solid var(--line);background:#0f1731;color:#e6ecff}
   .card{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0}
   input[type="text"]{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0f1731;color:#e6ecff;min-width:260px}
@@ -236,25 +236,50 @@
   }
 
   function buildLawJoSubURLs(oc,id,item){
-    // padded 형태
-    const p1 = new URL(DRF + '/lawService.do');
-    // non-padded 형태(호환용)
-    const p2 = new URL(DRF + '/lawService.do');
+    // 다양한 조합을 모두 생성하여 호환성 확보
+    const baseParams = { OC: oc, target: 'lawjosub', type: 'HTML', ID: id };
+    const makeUrl = (extra) => {
+      const u = new URL(DRF + '/lawService.do');
+      Object.entries(baseParams).forEach(([k,v])=>u.searchParams.set(k,v));
+      Object.entries(extra||{})
+        .forEach(([k,v])=>{ if(v!=null && v!=='') u.searchParams.set(k,v); });
+      return u.toString();
+    };
+    const pad = v => v ? String(parseInt(v,10)).padStart(6,'0') : null;
+    const raw = v => v ? String(parseInt(v,10)) : null;
 
-    const base = { OC:oc, target:'lawjosub', type:'HTML', ID:id };
-    Object.entries(base).forEach(([k,v])=>{ p1.searchParams.set(k,v); p2.searchParams.set(k,v); });
+    const hasHang = !!item.hang;
+    const hasHo   = !!item.ho;
 
-    const unp = v => v ? String(parseInt(v,10)) : null;
+    // 1) 조만 (가장 보수적, 거의 항상 지원)
+    const joOnly = {
+      pad: makeUrl({ JO: pad(item.jo) }),
+      raw: makeUrl({ JO: raw(item.jo) })
+    };
 
-    if(item.jo){ p1.searchParams.set('JO', item.jo); p2.searchParams.set('JO', unp(item.jo)); }
-    if(item.joi){ p1.searchParams.set('JOSUB', item.joi); p2.searchParams.set('JOSUB', unp(item.joi)); }
-    if(item.hang){ p1.searchParams.set('HANG', item.hang); p2.searchParams.set('HANG', unp(item.hang)); }
-    if(item.ho){ p1.searchParams.set('HO', item.ho); p2.searchParams.set('HO', unp(item.ho)); }
-    if(item.mok){ p1.searchParams.set('MOK', item.mok); p2.searchParams.set('MOK', item.mok); }
+    // 2) 조+호 (항이 없는 조문 구조에서 사용)
+    const joHo = hasHo ? {
+      pad: makeUrl({ JO: pad(item.jo), HO: pad(item.ho) }),
+      raw: makeUrl({ JO: raw(item.jo), HO: raw(item.ho) })
+    } : null;
 
-    return [p1.toString(), p2.toString()];
+    // 3) 조+호 + HANG=000000 (일부 백엔드에서 무항 표현을 요구하는 케이스)
+    const joHoHangZero = hasHo ? {
+      pad: makeUrl({ JO: pad(item.jo), HANG: '000000', HO: pad(item.ho) })
+    } : null;
+
+    // 4) 조+항(+호) — 표준 케이스
+    const joHangHo = hasHang ? {
+      pad: makeUrl({ JO: pad(item.jo), HANG: pad(item.hang), ...(hasHo?{HO:pad(item.ho)}:{}) }),
+      raw: makeUrl({ JO: raw(item.jo), HANG: raw(item.hang), ...(hasHo?{HO:raw(item.ho)}:{}) })
+    } : null;
+
+    return { joOnly, joHo, joHoHangZero, joHangHo };
   }
-  function buildLawFullHTMLURL(oc,id){ return buildURL('/lawService.do', { OC:oc, target:'law', type:'HTML', ID:id }); }
+
+  function buildLawFullHTMLURL(oc,id){
+    return buildURL('/lawService.do', { OC:oc, target:'law', type:'HTML', ID:id });
+  }
 
   /** ===================== 렌더링 ===================== **/
   function addFoundItem(el, it){
@@ -303,24 +328,45 @@
       const lawId = row.법령ID || row.id || '';
       const lsiSeq = row.법령일련번호 || '';
       const serviceLink = row.법령상세링크 ? ('https://www.law.go.kr' + row.법령상세링크) : '';
-      const human = lsiSeq ? ('https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=' + lsiSeq) : (serviceLink || publicLawURL(it.disp||it.lawName));
+      const humanSite = publicLawURL(it.disp||it.lawName);
 
       if(it.kind==='article'){
-        const [uPad,uRaw] = buildLawJoSubURLs(OC, lawId, it);
+        const urls = buildLawJoSubURLs(OC, lawId, it);
+        const tryUrlsArr = [];
+        if(urls.joHangHo){ if(urls.joHangHo.pad) tryUrlsArr.push(urls.joHangHo.pad); if(urls.joHangHo.raw) tryUrlsArr.push(urls.joHangHo.raw); }
+        if(urls.joHoHangZero){ if(urls.joHoHangZero.pad) tryUrlsArr.push(urls.joHoHangZero.pad); }
+        if(urls.joHo){ if(urls.joHo.pad) tryUrlsArr.push(urls.joHo.pad); if(urls.joHo.raw) tryUrlsArr.push(urls.joHo.raw); }
+        if(urls.joOnly){ if(urls.joOnly.pad) tryUrlsArr.push(urls.joOnly.pad); if(urls.joOnly.raw) tryUrlsArr.push(urls.joOnly.raw); }
         let rendered = '';
         try{
           if(byId('proxy').value.trim()){
-            let html = (await fetchText(uPad)).text;
-            if((!html || html.length<60) && it.joi){ html = (await fetchText(uRaw)).text; }
-            if(html && html.length>60){ rendered = wrapRender(`${it.disp||it.lawName} · ${it.raw}`, html); }
+            const tryList = [];
+            const noHangHasHo = (!it.hang && !!it.ho);
+            // 우선순위: (항 없음 & 호 있음) => HANG=000000 먼저 시도
+            if(urls.joHangHo){ tryList.push(urls.joHangHo.pad, urls.joHangHo.raw); }
+            if(noHangHasHo && urls.joHoHangZero){ tryList.push(urls.joHoHangZero.pad); }
+            if(urls.joHo){ tryList.push(urls.joHo.pad, urls.joHo.raw); }
+            if(urls.joOnly){ tryList.push(urls.joOnly.pad, urls.joOnly.raw); }
+            for(const u of tryList.filter(Boolean)){
+              const html = (await fetchText(u)).text;
+              if(html && html.length>60){ rendered = wrapRender(`${it.disp||it.lawName} · ${it.raw}`, html); break; }
+            }
           }
         }catch(e){ console.warn('render fail', e); }
 
-        li.innerHTML = `<div><b>${it.raw}</b> <span class="small">(${it.disp||it.lawName})</span></div>
-          <div class="small">법령ID: ${lawId}${lsiSeq ? ` · 일련번호(lsiSeq): ${lsiSeq}`:''}</div>
-          <div>• API(0패딩): <a target="_blank" rel="noopener" href="${uPad}">lawjosub(HTML)</a> | <a target="_blank" rel="noopener" href="${uPad.replace('type=HTML','type=XML')}">XML</a> | <a target="_blank" rel="noopener" href="${uPad.replace('type=HTML','type=JSON')}">JSON</a></div>
-          <div>• API(비패딩): <a target="_blank" rel="noopener" href="${uRaw}">lawjosub(HTML)</a></div>
-          <div>• 원문: <a target="_blank" rel="noopener" href="${human}">상세 페이지</a>${serviceLink?` · <a target="_blank" rel="noopener" href="${serviceLink}">DRF 상세링크</a>`:''}</div>
+        // 링크 세트 출력
+        const links = [];
+        const noHangHasHo = (!it.hang && !!it.ho);
+        if(noHangHasHo && urls.joHoHangZero){ links.push(`• API(권장·조+호+HANG=000000): <a title=\"항이 없는 조문에서 호만 있는 경우 권장\" target=\"_blank\" rel=\"noopener\" href=\"${urls.joHoHangZero.pad}\">HTML</a>`); }
+        if(urls.joHo){ links.push(`• API(조+호, 0패딩/RAW): <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joHo.pad}\">HTML</a> | <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joHo.raw}\">RAW</a>`); }
+        if(urls.joHangHo){ links.push(`• API(조+항${it.ho?'+호':''}, 0패딩): <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joHangHo.pad}\">lawjosub(HTML)</a>${urls.joHangHo.raw?` | <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joHangHo.raw}\">RAW</a>`:''}`); }
+        if(urls.joOnly){ links.push(`• API(조만, 0패딩/RAW): <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joOnly.pad}\">HTML</a> | <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joOnly.raw}\">RAW</a>`); }
+
+        li.innerHTML = `<div><b>${it.raw}</b> <span class=\"small\">(${it.disp||it.lawName})</span></div>
+          <div class=\"small\">법령ID: ${lawId}${lsiSeq ? ` · 일련번호(lsiSeq): ${lsiSeq}`:''}</div>
+          ${links.map(l=>`<div>${l}</div>`).join('')}
+          <div>• 로컬: <a href="#" onclick="openLocalFullWithScroll({lawId: '${lawId}', title: '${(it.disp||it.lawName)}', tryUrls: ${JSON.stringify(tryUrlsArr)}, jo:'${it.jo||''}', joi:'${it.joi||''}', hang:'${it.hang||''}', ho:'${it.ho||''}'}); return false;">전체(스크롤/하이라이트)</a> <span class="small">(프록시 필요)</span></div>
+          <div>• 원문: <a target=\"_blank\" rel=\"noopener\" href=\"${humanSite}\">사이트 상세(현행)</a>${serviceLink?` · <a target=\"_blank\" rel=\"noopener\" href=\"${serviceLink}\">DRF 상세링크</a>`:''}</div>
           ${rendered||''}`;
       } else {
         const fullURL = buildLawFullHTMLURL(OC, lawId);
@@ -343,7 +389,7 @@
 
         li.innerHTML = `<div><b>${label||it.disp||it.lawName}</b> <span class="small">(${it.disp||it.lawName})</span></div>
           <div class="small">법령ID: ${lawId}${lsiSeq ? ` · 일련번호(lsiSeq): ${lsiSeq}`:''}</div>
-          <div>• 전체 본문: <a target="_blank" rel="noopener" href="${fullURL}">law(HTML)</a> | 원문: <a target="_blank" rel="noopener" href="${human}">상세 페이지</a>${serviceLink?` · <a target="_blank" rel="noopener" href="${serviceLink}">DRF 상세링크</a>`:''}</div>
+          <div>• 전체 본문: <a target="_blank" rel="noopener" href="${fullURL}">law(HTML)</a> | 원문: <a target="_blank" rel="noopener" href="${humanSite}">사이트 상세(현행)</a>${serviceLink?` · <a target="_blank" rel="noopener" href="${serviceLink}">DRF 상세링크</a>`:''}</div>
           ${rendered||''}`;
       }
     }
@@ -363,6 +409,8 @@
   function expect(name, cond){ return (cond?`✅ <span class="pass">PASS</span>`:`❌ <span class="fail">FAIL</span>`) + ` — ${name}`; }
   function runBuiltInTests(){
     const out = byId('testOutput');
+
+    // 기본 샘플 (기존 테스트 유지)
     const sample = [
       '사립학교법',
       '「유아교육법」 제2조제2호, 「초·중등교육법」 제2조 및 「고등교육법」 제2조를 따른다.',
@@ -386,7 +434,24 @@
     const noise = '학교법인, 공공단체 외의 법, 일반적 의미의 사립학교법 등의 용어가 쓰였으나 특정 조항 없음.';
     const noiseOut = extractCitationsAdvanced(noise).filter(it=> it.kind==='article' || it.kind==='annex' || it.kind==='supplement');
 
+    // 추가 샘플 1: 항 없이 호만 있는 구조(조+호)
+    const s2 = '「전기공사업법」 제2조제1호에 따른다.';
+    const c2 = extractCitationsAdvanced(s2).find(x=> x.kind==='article');
+    const t2_1 = !!c2 && nm(c2.lawName)==='전기공사업법';
+    const t2_2 = !!c2 && c2.jo==='000002' && !c2.hang && c2.ho==='000001';
+
+    // 추가 샘플 2: 같은 법 시행령 맥락, 조의/항 표시
+    const s3 = '「초·중등교육법」 제2조. 같은 법 시행령 제9조의2 제1항.';
+    const c3 = extractCitationsAdvanced(s3).filter(x=> x.kind==='article');
+    const hasSL = c3.some(x=> nm(x.lawName)==='초중등교육법시행령' && x.jo==='000009' && x.joi==='000002' && x.hang==='000001');
+
+    // 추가 샘플 3: 별표 인식(컨텍스트)
+    const s4 = '초·중등교육법 별표 1';
+    const c4 = extractCitationsAdvanced(s4).find(x=> x.kind==='annex');
+    const t4_1 = !!c4 && nm(c4.lawName)==='초중등교육법';
+
     out.innerHTML = [
+      '<b>기본 테스트</b>',
       expect('법령명 단독은 제외(no lawOnly)', noLawOnly),
       expect('유아교육법 제2조제2호 포함', hasU),
       expect('초·중등교육법 제2조 포함', hasC),
@@ -395,12 +460,26 @@
       expect('부칙 인식', hasSupp),
       expect('등장 순서 유지(유아→초중등→고등)', orderOk),
       expect('노이즈 텍스트에서 아무 것도 추출하지 않음', noiseOut.length===0),
-      `<div class=\"small\">총 추출 수(필터 후): ${cites.length}</div>`
+      `<div class=\"small\">총 추출 수(필터 후): ${cites.length}</div>`,
+      '',
+      '<b>추가 테스트</b>',
+      expect('전기공사업법 — 법령명 매칭', t2_1),
+      expect('전기공사업법 — 조만/호 파싱(항 없음)', t2_2),
+      expect('같은 법 시행령 — 조의/항 파싱', hasSL),
+      expect('별표 컨텍스트 인식', t4_1)
     ].join('<br/>');
 
     byId('input').value = sample;
   }
 })();
+
+// ===== 로컬 전체(스크롤/하이라이트) 지원 함수 (백슬래시 없는 버전) =====
+function collapseSpaces(s){ if(!s) return ''; var out='', sp=false; for(var i=0;i<s.length;i++){ var c=s[i]; if(c===' '||c==='
+'||c==='	'||c==='
+'){ if(!sp){ out+=' '; sp=true; } } else { out+=c; sp=false; } } return out.trim(); }
+function stripHtmlToText(html){ var d=document.createElement('div'); d.innerHTML=html||''; return collapseSpaces(d.textContent||''); }
+function findAndMark(container, key){ key = collapseSpaces(key||''); if(!key) return null; if(key.length>80) key=key.slice(0,80); var walker=document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null); var node; while(node=walker.nextNode()){ var t=collapseSpaces(node.nodeValue||''); if(!t) continue; var i=t.indexOf(key); if(i>=0){ var span=document.createElement('mark'); span.className='hl'; span.id='__HIT'; var before=document.createTextNode(t.slice(0,i)); var mid=document.createTextNode(t.slice(i,i+key.length)); var after=document.createTextNode(t.slice(i+key.length)); var p=node.parentNode; if(!p) return null; p.replaceChild(after,node); p.insertBefore(span,after); span.appendChild(mid); p.insertBefore(before,span); return span; } } return null; }
+async function openLocalFullWithScroll(opts){ try{ var proxySet=!!(document.getElementById('proxy')&&document.getElementById('proxy').value.trim()); if(!proxySet){ alert('프록시를 입력해야 전체본문을 불러올 수 있습니다.'); return; } var lawId=opts.lawId; var title=opts.title||''; var tryUrls=opts.tryUrls||[]; var snippetHtml=''; for(var i=0;i<tryUrls.length;i++){ try{ var t=(await fetchText(tryUrls[i])).text; if(t&&t.length>60){ snippetHtml=t; break; } }catch(e){} } var keyText=stripHtmlToText(snippetHtml); var fullURL=buildLawFullHTMLURL(OC, lawId); var fullHtml=(await fetchText(fullURL)).text||''; var modal=document.getElementById('viewer'); var body=document.getElementById('viewerBody'); var titleEl=document.getElementById('viewerTitle'); titleEl.textContent=(title||'')+' · 로컬 전체(스크롤)'; body.innerHTML=fullHtml; modal.classList.add('on'); modal.setAttribute('aria-hidden','false'); setTimeout(function(){ var hit=findAndMark(body,keyText); if(!hit){ var mk=function(n){ return String(parseInt(n||'0',10)); }; var jb=(opts.jo?('제'+mk(opts.jo)+'조'):'') + (opts.joi?('의'+mk(opts.joi)):''); hit=findAndMark(body,jb); } if(hit){ hit.scrollIntoView({behavior:'smooth',block:'center'}); } },100); }catch(e){ alert('로컬 뷰어 오류: '+e); } }
 </script>
 </body>
 </html>
