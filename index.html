@@ -473,10 +473,21 @@
   }
 })();
 
-// ===== 로컬 전체(스크롤/하이라이트) 지원 함수 (백슬래시 없는 버전) =====
-function collapseSpaces(s){ if(!s) return ''; var out='', sp=false; for(var i=0;i<s.length;i++){ var c=s[i]; if(c===' '||c==='
-'||c==='	'||c==='
-'){ if(!sp){ out+=' '; sp=true; } } else { out+=c; sp=false; } } return out.trim(); }
+// ===== 로컬 전체(스크롤/하이라이트) 지원 함수 =====
+function collapseSpaces(s){
+  if(!s) return '';
+  var out='', sp=false;
+  for(var i=0;i<s.length;i++){
+    var c=s[i];
+    if(c===' ' || c==='\r' || c==='\n' || c==='\t'){
+      if(!sp){ out+=' '; sp=true; }
+    }else{
+      out+=c;
+      sp=false;
+    }
+  }
+  return out.trim();
+}
 function stripHtmlToText(html){ var d=document.createElement('div'); d.innerHTML=html||''; return collapseSpaces(d.textContent||''); }
 function findAndMark(container, key){ key = collapseSpaces(key||''); if(!key) return null; if(key.length>80) key=key.slice(0,80); var walker=document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null); var node; while(node=walker.nextNode()){ var t=collapseSpaces(node.nodeValue||''); if(!t) continue; var i=t.indexOf(key); if(i>=0){ var span=document.createElement('mark'); span.className='hl'; span.id='__HIT'; var before=document.createTextNode(t.slice(0,i)); var mid=document.createTextNode(t.slice(i,i+key.length)); var after=document.createTextNode(t.slice(i+key.length)); var p=node.parentNode; if(!p) return null; p.replaceChild(after,node); p.insertBefore(span,after); span.appendChild(mid); p.insertBefore(before,span); return span; } } return null; }
 async function openLocalFullWithScroll(opts){ try{ var proxySet=!!(document.getElementById('proxy')&&document.getElementById('proxy').value.trim()); if(!proxySet){ alert('프록시를 입력해야 전체본문을 불러올 수 있습니다.'); return; } var lawId=opts.lawId; var title=opts.title||''; var tryUrls=opts.tryUrls||[]; var snippetHtml=''; for(var i=0;i<tryUrls.length;i++){ try{ var t=(await fetchText(tryUrls[i])).text; if(t&&t.length>60){ snippetHtml=t; break; } }catch(e){} } var keyText=stripHtmlToText(snippetHtml); var fullURL=buildLawFullHTMLURL(OC, lawId); var fullHtml=(await fetchText(fullURL)).text||''; var modal=document.getElementById('viewer'); var body=document.getElementById('viewerBody'); var titleEl=document.getElementById('viewerTitle'); titleEl.textContent=(title||'')+' · 로컬 전체(스크롤)'; body.innerHTML=fullHtml; modal.classList.add('on'); modal.setAttribute('aria-hidden','false'); setTimeout(function(){ var hit=findAndMark(body,keyText); if(!hit){ var mk=function(n){ return String(parseInt(n||'0',10)); }; var jb=(opts.jo?('제'+mk(opts.jo)+'조'):'') + (opts.joi?('의'+mk(opts.joi)):''); hit=findAndMark(body,jb); } if(hit){ hit.scrollIntoView({behavior:'smooth',block:'center'}); } },100); }catch(e){ alert('로컬 뷰어 오류: '+e); } }
