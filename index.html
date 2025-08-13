@@ -102,8 +102,6 @@
 </div>
 
 <script>
-
-  
 (function(){
   'use strict';
 
@@ -160,8 +158,8 @@
   function displayName(s){
     return (s||'').replace(/[\"“”'‘’\[\]\(\)「」]/g,'').trim();
   }
-  
-  // [추가] 컨텍스트 용어(같은법/동법/… 시행령·시행규칙)를 일반 법명에서 제외하기 위한 도우미
+
+  // [추가] 컨텍스트 용어(같은법/동법/… 시행령·시행규칙)를 일반 법명에서 제외
   function _normCtx(s){ return (s||'').replace(/\s+/g,''); }
   function isContextualName(nameRaw){
     const n = _normCtx(nameRaw);
@@ -172,7 +170,6 @@
         || n === '이규칙' || n === '동규칙';
   }
 
- 
   /** ===================== 고급 인용 추출 ===================== **/
   const LAW_BASE = `[가-힣A-Za-z0-9·ㆍ\\s]+?법`;
   const LAW_EO   = `(?:시행령|시행규칙)`;
@@ -193,6 +190,10 @@
   };
   const BYEOLPYO_RE = /(?:별표|[별附]표)\s*(\d+)?/g;
   const BUCHIK_RE   = /부칙\s*(\d+)?/g;
+
+  // ✅ (수정) 컨텍스트 인용 정규식 추가
+  const CTX_WORD = '(?:같은\\s*법|이\\s*법|동\\s*법|같은\\s*법\\s*시행령|동\\s*법\\s*시행령|이\\s*영|동\\s*시행령|같은\\s*법\\s*시행규칙|동\\s*법\\s*시행규칙|이\\s*규칙|동\\s*규칙)';
+  const CTX_RE   = new RegExp(`(${CTX_WORD})\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
 
   function tokenizeForContext(text){
     return text.replace(/[\u00A0\t\r\n]+/g,' ').split(/(?<=[.!?。]|[)\]\}])\s+|\s{2,}/);
@@ -223,22 +224,21 @@
     const tokens = tokenizeForContext(text);
     const cites = [];
     const seen = new Set();
-  
+
     for(const t of tokens){
       // (A) 문장 안의 "명시적 법명"을 발견해 기반(법/영/규) 업데이트
       let m0; const LAW_NAME_ONLY_RE = new RegExp(LAW_FULL, 'g');
       while((m0 = LAW_NAME_ONLY_RE.exec(t))){
         const rawName = m0[1];
         const disp = displayName(rawName);
-        if (isContextualName(disp)) continue;          // ★ 컨텍스트 용어는 기반 업데이트 금지
+        if (isContextualName(disp)) continue; // 컨텍스트 용어는 기반 업데이트 금지
         updateBaseFromName(disp);
       }
-  
+
       // (B) 「…」 따옴표 표기(명시 인용)
       let q; while((q = QUOTED_RE.exec(t))){
         const [raw, rawName, joNum, joUi, hang, ho, mokChar] = q;
         const disp = displayName(rawName);
-        // 따옴표 표기는 실제 법명만 등장하므로 그대로 수용
         pushUnique(seen, cites, {
           raw, lawName: canonName(disp), disp,
           jo: pad6(joNum), joi: joUi?pad6(joUi):null,
@@ -247,12 +247,12 @@
         });
         updateBaseFromName(disp);
       }
-  
-      // (C) 일반 인용: "○○법 제○조…" — 단, 컨텍스트 용어면 건너뜀
+
+      // (C) 일반 인용: "○○법 제○조…"
       let m; while((m = EXPL_RE.exec(t))){
         const [raw, rawName, joNum, joUi, hang, ho, mokAll] = m;
         const disp = displayName(rawName);
-        if (isContextualName(disp)) continue;          // ★ 컨텍스트 용어가 일반 법명으로 잡힌 경우 무시
+        if (isContextualName(disp)) continue;
         pushUnique(seen, cites, {
           raw, lawName: canonName(disp), disp,
           jo: joNum?pad6(joNum):null, joi: joUi?pad6(joUi):null,
@@ -262,7 +262,7 @@
         });
         updateBaseFromName(disp);
       }
-  
+
       // (D) 컨텍스트 인용: 같은법/동법(시행령·시행규칙) + 조·항·호…
       while((m = CTX_RE.exec(t))){
         const [raw, ctxWord, joNum, joUi, hang, ho, mokAll] = m;
@@ -277,7 +277,7 @@
           kind:'article'
         });
       }
-  
+
       // (E) 별표/부칙 — 직전 ‘명시적’ 기반(법/영/규)을 기준으로만
       let bp; while((bp = BYEOLPYO_RE.exec(t))){
         const target = lastExplicitBase.법 || lastExplicitBase.영 || lastExplicitBase.규; if(!target) continue;
@@ -290,7 +290,6 @@
     }
     return cites;
   }
-
 
   /** ===================== DRF API ===================== **/
   async function searchLawRow(oc, lawQuery){
@@ -371,6 +370,7 @@
     return row || null;
   }
 
+  // ✅ (수정) JOI(조의○) 파라미터 전 경로 반영
   function buildLawJoSubURLs(oc,id,item){
     const baseParams = { OC: oc, target: 'lawjosub', type: 'HTML', ID: id };
     const makeUrl = (extra) => {
@@ -384,11 +384,31 @@
 
     const hasHang = !!item.hang;
     const hasHo   = !!item.ho;
+    const hasJoi  = !!item.joi;
 
-    const joOnly = { pad: makeUrl({ JO: pad(item.jo) }), raw: makeUrl({ JO: raw(item.jo) }) };
-    const joHo = hasHo ? { pad: makeUrl({ JO: pad(item.jo), HO: pad(item.ho) }), raw: makeUrl({ JO: raw(item.jo), HO: raw(item.ho) }) } : null;
-    const joHoHangZero = hasHo ? { pad: makeUrl({ JO: pad(item.jo), HANG: '000000', HO: pad(item.ho) }) } : null;
-    const joHangHo = hasHang ? { pad: makeUrl({ JO: pad(item.jo), HANG: pad(item.hang), ...(hasHo?{HO:pad(item.ho)}:{}) }), raw: makeUrl({ JO: raw(item.jo), HANG: raw(item.hang), ...(hasHo?{HO:raw(item.ho)}:{}) }) } : null;
+    const common    = hasJoi ? { JOI: pad(item.joi) } : {};
+    const rawCommon = hasJoi ? { JOI: raw(item.joi) } : {};
+
+    const joOnly = {
+      pad: makeUrl({ JO: pad(item.jo), ...common }),
+      raw: makeUrl({ JO: raw(item.jo), ...rawCommon })
+    };
+
+    const joHo = hasHo ? {
+      pad: makeUrl({ JO: pad(item.jo), HO: pad(item.ho), ...common }),
+      raw: makeUrl({ JO: raw(item.jo), HO: raw(item.ho), ...rawCommon })
+    } : null;
+
+    // 항 없이 호만 있는 조문 대응
+    const joHoHangZero = hasHo ? {
+      pad: makeUrl({ JO: pad(item.jo), HANG: '000000', HO: pad(item.ho), ...common })
+    } : null;
+
+    const joHangHo = hasHang ? {
+      pad: makeUrl({ JO: pad(item.jo), HANG: pad(item.hang), ...(hasHo?{HO:pad(item.ho)}:{}), ...common }),
+      raw: makeUrl({ JO: raw(item.jo), HANG: raw(item.hang), ...(hasHo?{HO:raw(item.ho)}:{}), ...rawCommon })
+    } : null;
+
     return { joOnly, joHo, joHoHangZero, joHangHo };
   }
 
@@ -473,19 +493,19 @@
         // 링크 세트 출력
         const links = [];
         const noHangHasHo = (!it.hang && !!it.ho);
-        if(noHangHasHo && urls.joHoHangZero){ links.push(`• API(권장·조+호+HANG=000000): <a title=\"항이 없는 조문에서 호만 있는 경우 권장\" target=\"_blank\" rel=\"noopener\" href=\"${urls.joHoHangZero.pad}\">HTML</a>`); }
-        if(urls.joHo){ links.push(`• API(조+호, 0패딩/RAW): <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joHo.pad}\">HTML</a> | <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joHo.raw}\">RAW</a>`); }
-        if(urls.joHangHo){ links.push(`• API(조+항${it.ho?'+호':''}, 0패딩): <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joHangHo.pad}\">lawjosub(HTML)</a>${urls.joHangHo.raw?` | <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joHangHo.raw}\">RAW</a>`:''}`); }
-        if(urls.joOnly){ links.push(`• API(조만, 0패딩/RAW): <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joOnly.pad}\">HTML</a> | <a target=\"_blank\" rel=\"noopener\" href=\"${urls.joOnly.raw}\">RAW</a>`); }
+        if(noHangHasHo && urls.joHoHangZero){ links.push(`• API(권장·조+호+HANG=000000): <a title="항이 없는 조문에서 호만 있는 경우 권장" target="_blank" rel="noopener" href="${urls.joHoHangZero.pad}">HTML</a>`); }
+        if(urls.joHo){ links.push(`• API(조+호, 0패딩/RAW): <a target="_blank" rel="noopener" href="${urls.joHo.pad}">HTML</a> | <a target="_blank" rel="noopener" href="${urls.joHo.raw}">RAW</a>`); }
+        if(urls.joHangHo){ links.push(`• API(조+항${it.ho?'+호':''}, 0패딩): <a target="_blank" rel="noopener" href="${urls.joHangHo.pad}">lawjosub(HTML)</a>${urls.joHangHo.raw?` | <a target="_blank" rel="noopener" href="${urls.joHangHo.raw}">RAW</a>`:''}`); }
+        if(urls.joOnly){ links.push(`• API(조만, 0패딩/RAW): <a target="_blank" rel="noopener" href="${urls.joOnly.pad}">HTML</a> | <a target="_blank" rel="noopener" href="${urls.joOnly.raw}">RAW</a>`); }
 
-        li.innerHTML = `<div><b>${it.raw}</b> <span class=\"small\">(${it.disp||it.lawName})</span></div>
-          <div class=\"small\">법령ID: ${lawId}${lsiSeq ? ` · 일련번호(lsiSeq): ${lsiSeq}`:''}</div>
+        li.innerHTML = `<div><b>${it.raw}</b> <span class="small">(${it.disp||it.lawName})</span></div>
+          <div class="small">법령ID: ${lawId}${lsiSeq ? ` · 일련번호(lsiSeq): ${lsiSeq}`:''}</div>
           ${links.map(l=>`<div>${l}</div>`).join('')}
-          <div>• 로컬: <a href=\"#\" onclick=\"window.openLocalFullWithScroll({lawId: '${lawId}', title: '${(it.disp||it.lawName)}', tryUrls: ${JSON.stringify(tryUrlsArr)}, jo:'${it.jo||''}', joi:'${it.joi||''}', hang:'${it.hang||''}', ho:'${it.ho||''}'}); return false;\">전체(스크롤/하이라이트)</a> <span class=\"small\">(프록시 필요)</span></div>
-          <div>• 원문: <a target=\"_blank\" rel=\"noopener\" href=\"${humanSite}\">사이트 상세(현행)</a>${serviceLink?` · <a target=\"_blank\" rel=\"noopener\" href=\"${serviceLink}\">DRF 상세링크</a>`:''}</div>
+          <div>• 로컬: <a href="#" onclick="window.openLocalFullWithScroll({lawId: '${lawId}', title: '${(it.disp||it.lawName)}', tryUrls: ${JSON.stringify(tryUrlsArr)}, jo:'${it.jo||''}', joi:'${it.joi||''}', hang:'${it.hang||''}', ho:'${it.ho||''}'}); return false;">전체(스크롤/하이라이트)</a> <span class="small">(프록시 필요)</span></div>
+          <div>• 원문: <a target="_blank" rel="noopener" href="${humanSite}">사이트 상세(현행)</a>${serviceLink?` · <a target="_blank" rel="noopener" href="${serviceLink}">DRF 상세링크</a>`:''}</div>
           ${rendered||''}`;
 
-        // ★ Hover용 데이터 주입 (이 li 전체에 데이터 저장, b 요소에 마우스 올리면 팝업)
+        // Hover용 데이터 (툴팁에서 활용)
         li.dataset.kind = 'article';
         li.dataset.lawid = lawId;
         li.dataset.lawname = (it.disp||it.lawName);
@@ -522,45 +542,73 @@
   function showTip(title, html, x, y){ tipEl.querySelector('.hdr').textContent=title||''; tipEl.querySelector('.cnt').innerHTML=html||''; tipEl.style.display='block'; posTip(x,y); }
   function posTip(x,y){ const pad=12; const vw=window.innerWidth, vh=window.innerHeight; const r=tipEl.getBoundingClientRect(); let left=x+pad, top=y+pad; if(left+r.width>vw-8) left=vw-r.width-8; if(top+r.height>vh-8) top=y-r.height-pad; if(top<8) top=8; tipEl.style.left=left+'px'; tipEl.style.top=top+'px'; }
   function hideTip(){ tipEl.style.display='none'; }
-  async function fetchArticleHTML(lawId, jo, hang, ho, joi){ const item={jo,hang,ho,joi}; const urls=buildLawJoSubURLs(OC, lawId, item); const tryList=[]; const noHangHasHo=(!hang && !!ho); if(noHangHasHo && urls.joHoHangZero){ tryList.push(urls.joHoHangZero.pad); } if(urls.joHangHo){ if(urls.joHangHo.pad) tryList.push(urls.joHangHo.pad); if(urls.joHangHo.raw) tryList.push(urls.joHangHo.raw); } if(urls.joHo){ if(urls.joHo.pad) tryList.push(urls.joHo.pad); if(urls.joHo.raw) tryList.push(urls.joHo.raw); } if(urls.joOnly){ if(urls.joOnly.pad) tryList.push(urls.joOnly.pad); if(urls.joOnly.raw) tryList.push(urls.joOnly.raw); } for(const u of tryList.filter(Boolean)){ try{ const html=(await fetchText(u)).text; if(html && html.length>60) return html; }catch(e){} } return '<div class="err">조문을 불러오지 못했습니다.</div>'; }
-  /* disabled old hover mousemove listener (replaced by improved lazy-search tooltip) */
-  /* disabled old hover mouseover listener (replaced by improved lazy-search tooltip) */
-  /* disabled old hover mouseout listener (replaced by improved lazy-search tooltip) */
+  async function fetchArticleHTML(lawId, jo, hang, ho, joi){
+    const item={jo,hang,ho,joi};
+    const urls=buildLawJoSubURLs(OC, lawId, item);
+    const tryList=[];
+    const noHangHasHo=(!hang && !!ho);
+    if(noHangHasHo && urls.joHoHangZero){ tryList.push(urls.joHoHangZero.pad); }
+    if(urls.joHangHo){ if(urls.joHangHo.pad) tryList.push(urls.joHangHo.pad); if(urls.joHangHo.raw) tryList.push(urls.joHangHo.raw); }
+    if(urls.joHo){ if(urls.joHo.pad) tryList.push(urls.joHo.pad); if(urls.joHo.raw) tryList.push(urls.joHo.raw); }
+    if(urls.joOnly){ if(urls.joOnly.pad) tryList.push(urls.joOnly.pad); if(urls.joOnly.raw) tryList.push(urls.joOnly.raw); }
+    for(const u of tryList.filter(Boolean)){
+      try{ const html=(await fetchText(u)).text; if(html && html.length>60) return html; }catch(e){}
+    }
+    return '<div class="err">조문을 불러오지 못했습니다.</div>';
+  }
 
-  /* ===================== Hover tooltip (b 요소 호버 시 즉시 조문 조회) ===================== */
+  // 개선된 호버: 결과 리스트의 <b> 텍스트에 마우스 올리면 해당 조문 즉시 조회
   const __tip = (()=>{ const el=document.createElement('div'); el.className='tooltip'; el.innerHTML='<div class="hdr"></div><div class="cnt"><span class="loading">불러오는 중…</span></div>'; document.body.appendChild(el); return el; })();
   function __tipShow(title, html, x, y){ __tip.querySelector('.hdr').textContent=title||''; __tip.querySelector('.cnt').innerHTML=html||''; __tip.style.display='block'; __tipPos(x,y); }
   function __tipPos(x,y){ const pad=12; const vw=window.innerWidth, vh=window.innerHeight; const r=__tip.getBoundingClientRect(); let left=x+pad, top=y+pad; if(left+r.width>vw-8) left=vw-r.width-8; if(top+r.height>vh-8) top=y-r.height-pad; if(top<8) top=8; __tip.style.left=left+'px'; __tip.style.top=top+'px'; }
   function __tipHide(){ __tip.style.display='none'; }
   const __lawIdCache = Object.create(null);
+
   async function __hoverFetchAndShow(bEl, ev){
     try{
       const host = bEl.closest('.item'); if(!host) return;
-      // (법명) 추출
       const small = host.querySelector('.small');
       const nameInParen = small ? (small.textContent||'').trim() : '';
       const lawName = (nameInParen.match(/\((.+)\)/)||[])[1] || nameInParen || '';
       if(!lawName) return;
-      // b 텍스트와 합쳐서 기존 파서(EXPL_RE) 재사용
+
+      // b 텍스트와 합쳐 파싱 (EXPL_RE 인덱스 정정)
       const combo = `${lawName} ${bEl.textContent||''}`;
       let m = EXPL_RE.exec(combo); EXPL_RE.lastIndex = 0;
       let jo=null,joi=null,hang=null,ho=null;
-      if(m){ jo=m[3]||m[2]||m[1]; joi=m[4]||null; hang=m[5]||null; ho=m[6]||null; }
-      // 표시
+      if(m){
+        // m[1]=법명, m[2]=조, m[3]=조의, m[4]=항, m[5]=호, m[6]=목
+        jo = m[2]||null;
+        joi= m[3]||null;
+        hang= m[4]||null;
+        ho  = m[5]||null;
+      }
+
       __tipShow(`${lawName} · ${bEl.textContent}`, '<span class="loading">불러오는 중…</span>', ev.clientX, ev.clientY);
+
       // ID 조회(캐시)
       let lawId = __lawIdCache[lawName];
-      if(!lawId){ const row = await searchLawRow(OC, lawName); lawId = row && (row.법령ID||row.id); if(lawId) __lawIdCache[lawName]=lawId; }
-      if(!lawId){ __tipShow(`${lawName} · ${bEl.textContent}`, `<div class="err">법령ID를 찾지 못했습니다. <a target="_blank" rel="noopener" href="${publicSearchURL(lawName)}">국가법령정보 검색</a></div>`, ev.clientX, ev.clientY); return; }
-      const html = await (async()=>{ const item={ jo:jo?String(jo).padStart(6,'0'):null, joi:joi?String(joi).padStart(6,'0'):null, hang:hang?String(hang).padStart(6,'0'):null, ho:ho?String(ho).padStart(6,'0'):null }; return await (async()=>{ const urls=buildLawJoSubURLs(OC, lawId, item); const tryList=[]; const noHangHasHo=(!item.hang && !!item.ho); if(noHangHasHo && urls.joHoHangZero){ tryList.push(urls.joHoHangZero.pad); } if(urls.joHangHo){ if(urls.joHangHo.pad) tryList.push(urls.joHangHo.pad); if(urls.joHangHo.raw) tryList.push(urls.joHangHo.raw); } if(urls.joHo){ if(urls.joHo.pad) tryList.push(urls.joHo.pad); if(urls.joHo.raw) tryList.push(urls.joHo.raw); } if(urls.joOnly){ if(urls.joOnly.pad) tryList.push(urls.joOnly.pad); if(urls.joOnly.raw) tryList.push(urls.joOnly.raw); } for(const u of tryList.filter(Boolean)){ try{ const html=(await fetchText(u)).text; if(html && html.length>60) return html; }catch(e){} } return '<div class="err">조문을 불러오지 못했습니다.</div>'; })(); })();
+      if(!lawId){
+        const row = await searchLawRow(OC, lawName);
+        lawId = row && (row.법령ID||row.id);
+        if(lawId) __lawIdCache[lawName]=lawId;
+      }
+      if(!lawId){
+        __tipShow(`${lawName} · ${bEl.textContent}`, `<div class="err">법령ID를 찾지 못했습니다. <a target="_blank" rel="noopener" href="${publicSearchURL(lawName)}">국가법령정보 검색</a></div>`, ev.clientX, ev.clientY);
+        return;
+      }
+
+      const html = await fetchArticleHTML(lawId, jo?String(jo).padStart(6,'0'):null, hang?String(hang).padStart(6,'0'):null, ho?String(ho).padStart(6,'0'):null, joi?String(joi).padStart(6,'0'):null);
       __tipShow(`${lawName} · ${bEl.textContent}`, html, ev.clientX, ev.clientY);
-    }catch(e){ __tipShow('오류', `<div class="err">${e+''}</div>`, ev.clientX, ev.clientY); }
+    }catch(e){
+      __tipShow('오류', `<div class="err">${e+''}</div>`, ev.clientX, ev.clientY);
+    }
   }
   document.addEventListener('mousemove', (e)=>{ if(__tip.style.display==='block') __tipPos(e.clientX,e.clientY); });
   document.addEventListener('mouseover', (e)=>{ const b=e.target.closest('.item b'); if(!b) return; __hoverFetchAndShow(b, e); });
   document.addEventListener('mouseout', (e)=>{ if(e.target.closest('.item b')) __tipHide(); });
 
-/** ===================== 바인딩 ===================== **/
+  /** ===================== 바인딩 ===================== **/
   document.addEventListener('DOMContentLoaded', function(){
     const runBtn   = byId('run');
     const clearBtn = byId('clear');
@@ -607,9 +655,56 @@
   /** ===================== 전역 노출 유틸 (모달 스크롤/하이라이트) ===================== **/
   function collapseSpaces(s){ if(!s) return ''; return s.replace(/[\t\n\r]+/g,' ').replace(/\s{2,}/g,' ').trim(); }
   function stripHtmlToText(html){ const d=document.createElement('div'); d.innerHTML=html||''; return collapseSpaces(d.textContent||''); }
-  function findAndMark(container, key){ key = collapseSpaces(key||''); if(!key) return null; if(key.length>80) key=key.slice(0,80); const walker=document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null); let node; while((node=walker.nextNode())){ const t=collapseSpaces(node.nodeValue||''); if(!t) continue; const i=t.indexOf(key); if(i>=0){ const span=document.createElement('mark'); span.className='hl'; span.id='__HIT'; const before=document.createTextNode(t.slice(0,i)); const mid=document.createTextNode(t.slice(i,i+key.length)); const after=document.createTextNode(t.slice(i+key.length)); const p=node.parentNode; if(!p) return null; p.replaceChild(after,node); p.insertBefore(span,after); span.appendChild(mid); p.insertBefore(before,span); return span; } } return null; }
+  function findAndMark(container, key){
+    key = collapseSpaces(key||'');
+    if(!key) return null;
+    if(key.length>80) key=key.slice(0,80);
+    const walker=document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    let node;
+    while((node=walker.nextNode())){
+      const t=collapseSpaces(node.nodeValue||''); if(!t) continue;
+      const i=t.indexOf(key);
+      if(i>=0){
+        const span=document.createElement('mark'); span.className='hl'; span.id='__HIT';
+        const before=document.createTextNode(t.slice(0,i));
+        const mid=document.createTextNode(t.slice(i,i+key.length));
+        const after=document.createTextNode(t.slice(i+key.length));
+        const p=node.parentNode; if(!p) return null;
+        p.replaceChild(after,node); p.insertBefore(span,after); span.appendChild(mid); p.insertBefore(before,span);
+        return span;
+      }
+    }
+    return null;
+  }
 
-  window.openLocalFullWithScroll = async function(opts){ try{ const proxySet=!!(byId('proxy')&&byId('proxy').value.trim()); if(!proxySet){ alert('프록시를 입력해야 전체본문을 불러올 수 있습니다.'); return; } const lawId=opts.lawId; const title=opts.title||''; const tryUrls=opts.tryUrls||[]; let snippetHtml=''; for(let i=0;i<tryUrls.length;i++){ try{ const t=(await fetchText(tryUrls[i])).text; if(t&&t.length>60){ snippetHtml=t; break; } }catch(e){} } const keyText=stripHtmlToText(snippetHtml); const fullURL=buildLawFullHTMLURL(OC, lawId); const fullHtml=(await fetchText(fullURL)).text||''; const modal=byId('viewer'); const body=byId('viewerBody'); const titleEl=byId('viewerTitle'); titleEl.textContent=(title||'')+' · 로컬 전체(스크롤)'; body.innerHTML=fullHtml; modal.classList.add('on'); modal.setAttribute('aria-hidden','false'); setTimeout(function(){ let hit=findAndMark(body,keyText); if(!hit){ const mk=n=> String(parseInt(n||'0',10)); const jb=(opts.jo?('제'+mk(opts.jo)+'조'):'') + (opts.joi?('의'+mk(opts.joi)):''); hit=findAndMark(body,jb); } if(hit){ hit.scrollIntoView({behavior:'smooth',block:'center'}); } },120); }catch(e){ alert('로컬 뷰어 오류: '+e); } }
+  window.openLocalFullWithScroll = async function(opts){
+    try{
+      const proxySet=!!(byId('proxy')&&byId('proxy').value.trim());
+      if(!proxySet){ alert('프록시를 입력해야 전체본문을 불러올 수 있습니다.'); return; }
+      const lawId=opts.lawId; const title=opts.title||'';
+      const tryUrls=opts.tryUrls||[];
+      let snippetHtml='';
+      for(let i=0;i<tryUrls.length;i++){
+        try{ const t=(await fetchText(tryUrls[i])).text; if(t&&t.length>60){ snippetHtml=t; break; } }catch(e){}
+      }
+      const keyText=stripHtmlToText(snippetHtml);
+      const fullURL=buildLawFullHTMLURL(OC, lawId);
+      const fullHtml=(await fetchText(fullURL)).text||'';
+      const modal=byId('viewer'); const body=byId('viewerBody'); const titleEl=byId('viewerTitle');
+      titleEl.textContent=(title||'')+' · 로컬 전체(스크롤)';
+      body.innerHTML=fullHtml;
+      modal.classList.add('on'); modal.setAttribute('aria-hidden','false');
+      setTimeout(function(){
+        let hit=findAndMark(body,keyText);
+        if(!hit){
+          const mk=n=> String(parseInt(n||'0',10));
+          const jb=(opts.jo?('제'+mk(opts.jo)+'조'):'') + (opts.joi?('의'+mk(opts.joi)):'');
+          hit=findAndMark(body,jb);
+        }
+        if(hit){ hit.scrollIntoView({behavior:'smooth',block:'center'}); }
+      },120);
+    }catch(e){ alert('로컬 뷰어 오류: '+e); }
+  }
 })();
 </script>
 </body>
