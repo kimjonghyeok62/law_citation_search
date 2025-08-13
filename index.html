@@ -135,6 +135,20 @@
     const text = await r.text();
     return { ok: r.ok, status: r.status, text, ct: (r.headers.get('content-type')||'') };
   }
+  // DRF 호출 전용: CORS 허용 환경에선 직통 → 실패 시 프록시 폴백
+  async function fetchDRF(url){
+    try{
+      const r = await fetch(url, { mode:'cors' });
+      const text = await r.text();
+      return { ok:r.ok, status:r.status, text, via:'direct' };
+    }catch(_){ /* fall back to proxy */ }
+    try{
+      const r2 = await fetch(withProxy(url));
+      const text2 = await r2.text();
+      return { ok:r2.ok, status:r2.status, text:text2, via:'proxy' };
+    }catch(e){ return { ok:false, status:0, text:'' }; }
+  };
+  }
 
   // 이름 정규화(검색용) & 표시용 가공
   function canonName(s){
@@ -258,7 +272,7 @@
     // 1) JSON 시도 (원문 쿼리 / 정규화 쿼리 두 번 시도)
     const tryJson = async (q)=>{
       const url = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'JSON', query:q, display:10 });
-      const { status, text } = await fetchText(url);
+      const { status, text } = await fetchDRF(url);
       if(isAuthFailText(text) || status===401 || status===403){ lastAuthFail = true; return null; }
       try{
         const data = JSON.parse(text);
@@ -276,7 +290,7 @@
     // 2) XML 시도
     const tryXml = async (q)=>{
       const url = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'XML', query:q, display:10 });
-      const { status, text } = await fetchText(url);
+      const { status, text } = await fetchDRF(url);
       if(isAuthFailText(text) || status===401 || status===403){ lastAuthFail = true; return null; }
       try{
         const dom = new DOMParser().parseFromString(text, 'text/xml');
@@ -298,11 +312,10 @@
     // 3) HTML 시도 (리스트 페이지에서 ID 추출)
     const tryHtml = async (q)=>{
       const url = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'HTML', query:q, display:10 });
-      const { status, text } = await fetchText(url);
+      const { status, text } = await fetchDRF(url);
       if(isAuthFailText(text) || status===401 || status===403){ lastAuthFail = true; return null; }
       try{
         const dom = new DOMParser().parseFromString(text, 'text/html');
-        // 표 안의 행들을 스캔, 링크의 ID 파라미터 추출
         const links = Array.from(dom.querySelectorAll('a[href*="ID="]'));
         const rows = links.map(a=>{
           const href=a.getAttribute('href')||'';
