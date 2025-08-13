@@ -147,7 +147,6 @@
       const text2 = await r2.text();
       return { ok:r2.ok, status:r2.status, text:text2, via:'proxy' };
     }catch(e){ return { ok:false, status:0, text:'' }; }
-  };
   }
 
   // 이름 정규화(검색용) & 표시용 가공
@@ -178,8 +177,8 @@
     SL: /(동\s*법\s*시행령|같은\s*법\s*시행령|이\s*영|동\s*시행령)/g,
     SK: /(동\s*법\s*시행규칙|같은\s*법\s*시행규칙|이\s*규칙|동\s*규칙)/g
   };
-  const BYEOLPYO_RE = /(?:별표|[별附]표)\\s*(\\d+)?/g;
-  const BUCHIK_RE   = /부칙\\s*(\\d+)?/g;
+  const BYEOLPYO_RE = /(?:별표|[별附]표)\s*(\d+)?/g;
+  const BUCHIK_RE   = /부칙\s*(\d+)?/g;
 
   function tokenizeForContext(text){
     return text.replace(/[\u00A0\t\r\n]+/g,' ').split(/(?<=[.!?。]|[)\]\}])\s+|\s{2,}/);
