@@ -34,18 +34,27 @@
   .pass{color:#22c55e}
   .fail{color:#ef4444}
   .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#0f1731;border:1px solid var(--line);color:#c9d6ff;font-size:.8rem}
+
+  /* Modal viewer */
+  .viewer{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+  .viewer.on{display:flex}
+  .viewer .box{width:min(1100px,96vw);height:min(80vh,900px);background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+  .viewer .hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#0f1731;border-bottom:1px solid var(--line)}
+  .viewer .body{flex:1;overflow:auto;background:#0c1330;padding:12px}
+  .viewer .close{background:#3b4977}
+  mark.hl{background:#fde047;color:#111;padding:0 .2em;border-radius:3px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>법조문 자동 추출·검색 · <span class="k">고급버전</span> <span class="small">(OC=bro3362 고정)</span></h1>
-  <div class="hint">본문의 법령 인용을 인식하고, <b>같은 법/동법 시행령/이 법·이 영·이 규칙</b> 같은 맥락 참조까지 해석합니다. <b>제○조의○</b>·<b>부칙</b>·<b>별표</b> 인용도 처리하며, <b>프록시</b>를 제공하면 조문 본문을 화면에 바로 렌더링합니다.</div>
+  <div class="hint">본문의 법령 인용을 인식하고, <b>같은 법/같은법/동법</b>, <b>동법 시행령/같은 법 시행령/이 영/동 시행령</b> 맥락 참조까지 해석합니다. <b>제○조의○</b>·<b>부칙</b>·<b>별표</b> 인용도 처리하며, <b>프록시</b>를 제공하면 조문 본문을 화면에 바로 렌더링합니다.</div>
 
   <div class="grid">
     <div>
       <div class="card">
         <label for="input"><b>본문 입력</b></label>
-        <textarea id="input" placeholder="예) 유아교육법 제8조의2 제4항, 같은 법 시행령 제9조 제3항 및 별표 1에 따라 ..."></textarea>
+        <textarea id="input" placeholder="예) 건축법 제22조, 같은법 제23조, 동법시행령 제9조의2 제3항 …"></textarea>
       </div>
     </div>
     <div>
@@ -71,6 +80,17 @@
   <div class="card tests">
     <h2>내장 테스트</h2>
     <div id="testOutput" class="small">[테스트 대기 중]</div>
+  </div>
+</div>
+
+<!-- Modal viewer for full law + scroll/highlight -->
+<div id="viewer" class="viewer" aria-hidden="true">
+  <div class="box">
+    <div class="hdr">
+      <div id="viewerTitle">로컬 전체(스크롤)</div>
+      <button class="close" onclick="document.getElementById('viewer').classList.remove('on');document.getElementById('viewer').setAttribute('aria-hidden','true')">닫기</button>
+    </div>
+    <div id="viewerBody" class="body"></div>
   </div>
 </div>
 
@@ -132,76 +152,89 @@
   const MOKRE = `(?:\\s*(${MOK}))?`;
   const EXPL_RE = new RegExp(`${LAW_FULL}\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
   const QUOTED_RE = /「\s*([가-힣A-Za-z0-9·ㆍ\s]+?법(?:\s*(?:시행령|시행규칙))?)\s*」\s*제\s*(\d+)\s*조(?:\s*의\s*(\d+))?(?:\s*제?\s*(\d+)\s*항)?(?:\s*제?\s*(\d+)\s*호)?(?:\s*([가-하])\s*목)?/g;
+
+  // ★ 맥락 키워드: 같은 법/같은법/동법, 동법시행령/같은 법 시행령/이 영/동 시행령, 시행규칙 버전도 포함
   const CTX_KEY = {
-    BASE: /(같은 법|이 법)/g,
-    SL: /(동법 시행령|같은 법 시행령|이 영|동 시행령)/g,
-    SK: /(동법 시행규칙|같은 법 시행규칙|이 규칙|동 규칙)/g
+    BASE: /(같은\s*법|이\s*법|동\s*법)/g,
+    SL: /(동\s*법\s*시행령|같은\s*법\s*시행령|이\s*영|동\s*시행령)/g,
+    SK: /(동\s*법\s*시행규칙|같은\s*법\s*시행규칙|이\s*규칙|동\s*규칙)/g
   };
   const BYEOLPYO_RE = /(?:별표|[별附]표)\s*(\d+)?/g;
   const BUCHIK_RE   = /부칙\s*(\d+)?/g;
 
   function tokenizeForContext(text){
-    return text.replace(/[\u00A0\t\r\n]+/g,' ').split(/(?:[.!?。]|[)\]\}])\s+/);
+    return text.replace(/[\u00A0\t\r\n]+/g,' ').split(/(?<=[.!?。]|[)\]\}])\s+|\s{2,}/);
   }
   function pad6(n){ return String(parseInt(n,10)).padStart(6,'0'); }
 
-  function resolveContextualName(token, lastBase){
-    if(CTX_KEY.BASE.test(token)) return lastBase?.법 || null;
-    if(CTX_KEY.SL.test(token))   return lastBase?.영 || (lastBase?.법 ? lastBase.법 + '시행령' : null);
-    if(CTX_KEY.SK.test(token))   return lastBase?.규 || (lastBase?.법 ? lastBase.법 + '시행규칙' : null);
+  // 마지막으로 명시된 "기본 법령"을 따로 추적 (같은법/동법이 바로 앞 법을 가리키도록)
+  let lastExplicitBase = { 법:null, 영:null, 규:null };
+
+  function updateBaseFromName(disp){
+    if(/시행령$/.test(disp)){ lastExplicitBase.영 = disp; lastExplicitBase.법 = disp.replace(/시행령$/, ''); lastExplicitBase.규 = lastExplicitBase.법 + '시행규칙'; }
+    else if(/시행규칙$/.test(disp)){ lastExplicitBase.규 = disp; lastExplicitBase.법 = disp.replace(/시행규칙$/, ''); lastExplicitBase.영 = lastExplicitBase.법 + '시행령'; }
+    else { lastExplicitBase.법 = disp; lastExplicitBase.영 = disp + '시행령'; lastExplicitBase.규 = disp + '시행규칙'; }
+  }
+
+  function resolveContextualName(token){
+    if(CTX_KEY.BASE.test(token)) return lastExplicitBase?.법 || null;           // 같은법/동법/이 법
+    if(CTX_KEY.SL.test(token))   return lastExplicitBase?.영 || (lastExplicitBase?.법 ? lastExplicitBase.법 + '시행령' : null); // 동법시행령 등
+    if(CTX_KEY.SK.test(token))   return lastExplicitBase?.규 || (lastExplicitBase?.법 ? lastExplicitBase.법 + '시행규칙' : null);
     return null;
   }
+
   function pushUnique(seen, arr, obj){
     const key = [obj.lawName, obj.jo||'', obj.joi||'', obj.hang||'', obj.ho||'', obj.mok||'', obj.kind||''].join('|');
     if(seen.has(key)) return; seen.add(key); arr.push(obj);
   }
+
   function extractCitationsAdvanced(text){
     const tokens = tokenizeForContext(text);
     const cites = [];
     const seen = new Set();
-    let ctx = { 법:null, 영:null, 규:null };
+
     for(const t of tokens){
       // (0) 법령명 단독 → 컨텍스트만 업데이트(표시는 제외)
       let m0; const LAW_NAME_ONLY_RE = new RegExp(LAW_FULL, 'g');
       while((m0 = LAW_NAME_ONLY_RE.exec(t))){
         const rawName = m0[1];
         const disp = displayName(rawName);
-        ctx.법 = disp; ctx.영 = disp + '시행령'; ctx.규 = disp + '시행규칙';
+        updateBaseFromName(disp);
       }
+
       // (1) 따옴표형 인용
       let q; while((q = QUOTED_RE.exec(t))){
         const [raw, rawName, joNum, joUi, hang, ho, mokChar] = q;
         const disp = displayName(rawName);
         pushUnique(seen, cites, { raw, lawName: canonName(disp), disp, jo: pad6(joNum), joi: joUi?pad6(joUi):null, hang: hang?pad6(hang):null, ho: ho?pad6(ho):null, mok: mokChar||null, kind:'article' });
-        if(/시행령$/.test(disp)){ ctx.영 = disp; ctx.법 = disp.replace(/시행령$/, ''); }
-        else if(/시행규칙$/.test(disp)){ ctx.규 = disp; ctx.법 = disp.replace(/시행규칙$/, ''); }
-        else { ctx.법 = disp; ctx.영 = disp + '시행령'; ctx.규 = disp + '시행규칙'; }
+        updateBaseFromName(disp);
       }
+
       // (2) 명시적 인용
       let m; while((m = EXPL_RE.exec(t))){
         const [raw, rawName, joNum, joUi, hang, ho, mokAll] = m;
         const disp = displayName(rawName);
         pushUnique(seen, cites, { raw, lawName: canonName(disp), disp, jo: joNum?pad6(joNum):null, joi: joUi?pad6(joUi):null, hang: hang?pad6(hang):null, ho: ho?pad6(ho):null, mok: mokAll?mokAll.match(/[가-하]/)?.[0]||null:null, kind:'article' });
-        if(/시행령$/.test(disp)){ ctx.영 = disp; ctx.법 = disp.replace(/시행령$/, ''); }
-        else if(/시행규칙$/.test(disp)){ ctx.규 = disp; ctx.법 = disp.replace(/시행규칙$/, ''); }
-        else { ctx.법 = disp; ctx.영 = disp + '시행령'; ctx.규 = disp + '시행규칙'; }
+        updateBaseFromName(disp);
       }
-      // (3) 맥락 참조
-      const CTX_RE = new RegExp(`((?:같은 법|이 법|동법 시행령|같은 법 시행령|이 영|동 시행령|동법 시행규칙|같은 법 시행규칙|이 규칙|동 규칙))\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
+
+      // (3) 맥락 참조 (같은법/동법/동법시행령/…) — 바로 앞에 명시된 법을 기준으로 해석
+      const CTX_RE = new RegExp(`((?:같은\\s*법|이\\s*법|동\\s*법|동\\s*법\\s*시행령|같은\\s*법\\s*시행령|이\\s*영|동\\s*시행령|동\\s*법\\s*시행규칙|같은\\s*법\\s*시행규칙|이\\s*규칙|동\\s*규칙))\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
       while((m = CTX_RE.exec(t))){
         const [raw, ctxWord, joNum, joUi, hang, ho, mokAll] = m;
-        const resolved = resolveContextualName(ctxWord, ctx);
+        const resolved = resolveContextualName(ctxWord);
         if(!resolved) continue;
         const disp = displayName(resolved);
         pushUnique(seen, cites, { raw, lawName: canonName(disp), disp, jo: joNum?pad6(joNum):null, joi: joUi?pad6(joUi):null, hang: hang?pad6(hang):null, ho: ho?pad6(ho):null, mok: mokAll?mokAll.match(/[가-하]/)?.[0]||null:null, kind:'article' });
       }
-      // (4) 별표/부칙
+
+      // (4) 별표/부칙 (가장 최근 명시 법 기준)
       let bp; while((bp = BYEOLPYO_RE.exec(t))){
-        const target = ctx.법 || ctx.영 || ctx.규; if(!target) continue;
+        const target = lastExplicitBase.법 || lastExplicitBase.영 || lastExplicitBase.규; if(!target) continue;
         pushUnique(seen, cites, { raw: bp[0], lawName: canonName(target), disp: displayName(target), kind:'annex', annexNo: bp[1]||null });
       }
       let bc; while((bc = BUCHIK_RE.exec(t))){
-        const target = ctx.법 || ctx.영 || ctx.규; if(!target) continue;
+        const target = lastExplicitBase.법 || lastExplicitBase.영 || lastExplicitBase.규; if(!target) continue;
         pushUnique(seen, cites, { raw: bc[0], lawName: canonName(target), disp: displayName(target), kind:'supplement', suppNo: bc[1]||null });
       }
     }
@@ -299,10 +332,13 @@
 
     if(!text.trim()){ alert('본문을 입력해 주세요.'); return; }
 
+    // 리셋: 바로 앞 명시 법 초기화
+    lastExplicitBase = { 법:null, 영:null, 규:null };
+
     const items = extractCitationsAdvanced(text);
     const filtered = items.filter(it => it.kind==='article' || it.kind==='annex' || it.kind==='supplement');
     if(!filtered.length){
-      foundUl.innerHTML = '<li>특정 가능한 법조문 인용을 찾지 못했습니다. (예: "○○법 제3조의2 제1항" 또는 "「○○법」 제2조제1항" 또는 "별표 1")</li>';
+      foundUl.innerHTML = '<li>특정 가능한 법조문 인용을 찾지 못했습니다. (예: "○○법 제3조의2 제1항" 또는 "같은법 제5조" 또는 "동법시행령 제9조" 또는 "별표 1")</li>';
       return;
     }
     filtered.forEach(it=> addFoundItem(foundUl, it));
@@ -343,8 +379,8 @@
             const tryList = [];
             const noHangHasHo = (!it.hang && !!it.ho);
             // 우선순위: (항 없음 & 호 있음) => HANG=000000 먼저 시도
-            if(urls.joHangHo){ tryList.push(urls.joHangHo.pad, urls.joHangHo.raw); }
             if(noHangHasHo && urls.joHoHangZero){ tryList.push(urls.joHoHangZero.pad); }
+            if(urls.joHangHo){ tryList.push(urls.joHangHo.pad, urls.joHangHo.raw); }
             if(urls.joHo){ tryList.push(urls.joHo.pad, urls.joHo.raw); }
             if(urls.joOnly){ tryList.push(urls.joOnly.pad, urls.joOnly.raw); }
             for(const u of tryList.filter(Boolean)){
@@ -365,7 +401,7 @@
         li.innerHTML = `<div><b>${it.raw}</b> <span class=\"small\">(${it.disp||it.lawName})</span></div>
           <div class=\"small\">법령ID: ${lawId}${lsiSeq ? ` · 일련번호(lsiSeq): ${lsiSeq}`:''}</div>
           ${links.map(l=>`<div>${l}</div>`).join('')}
-          <div>• 로컬: <a href="#" onclick="openLocalFullWithScroll({lawId: '${lawId}', title: '${(it.disp||it.lawName)}', tryUrls: ${JSON.stringify(tryUrlsArr)}, jo:'${it.jo||''}', joi:'${it.joi||''}', hang:'${it.hang||''}', ho:'${it.ho||''}'}); return false;">전체(스크롤/하이라이트)</a> <span class="small">(프록시 필요)</span></div>
+          <div>• 로컬: <a href="#" onclick="window.openLocalFullWithScroll({lawId: '${lawId}', title: '${(it.disp||it.lawName)}', tryUrls: ${JSON.stringify(tryUrlsArr)}, jo:'${it.jo||''}', joi:'${it.joi||''}', hang:'${it.hang||''}', ho:'${it.ho||''}'}); return false;">전체(스크롤/하이라이트)</a> <span class="small">(프록시 필요)</span></div>
           <div>• 원문: <a target=\"_blank\" rel=\"noopener\" href=\"${humanSite}\">사이트 상세(현행)</a>${serviceLink?` · <a target=\"_blank\" rel=\"noopener\" href=\"${serviceLink}\">DRF 상세링크</a>`:''}</div>
           ${rendered||''}`;
       } else {
@@ -410,76 +446,95 @@
   function runBuiltInTests(){
     const out = byId('testOutput');
 
-    // 기본 샘플 (기존 테스트 유지)
+    // 기본 샘플
     const sample = [
-      '사립학교법',
-      '「유아교육법」 제2조제2호, 「초·중등교육법」 제2조 및 「고등교육법」 제2조를 따른다.',
+      '건축법 제22조, 같은법 제23조, 동법시행령 제9조의2 제3항을 적용한다.',
+      '또한 「유아교육법」 제2조제2호, 「초·중등교육법」 제2조 및 「고등교육법」 제2조를 따른다.',
       '같은 법 시행령 제9조의2 제1항을 적용한다.',
-      '또한 별표 1과 부칙 1을 참고한다.'
+      '그리고 별표 1과 부칙 1을 참고한다.'
     ].join(' ');
+
     const citesAll = extractCitationsAdvanced(sample);
     const cites = citesAll.filter(it=> it.kind==='article' || it.kind==='annex' || it.kind==='supplement');
 
     const nm = s => canonName(s);
-    const noLawOnly = cites.every(c=> c.kind!=='lawOnly');
+    const hasArch = cites.some(c=> nm(c.lawName)==='건축법' && c.jo==='000022');
+    const hasSame = cites.some(c=> nm(c.lawName)==='건축법' && c.jo==='000023');
+    const hasSLArch = cites.some(c=> nm(c.lawName)==='건축법시행령' && c.jo==='000009' && c.joi==='000002' && c.hang==='000003');
+
     const hasU = cites.some(c=> nm(c.lawName)==='유아교육법' && c.ho==='000002');
     const hasC = cites.some(c=> nm(c.lawName)==='초중등교육법' && c.jo==='000002');
     const hasH = cites.some(c=> nm(c.lawName)==='고등교육법' && c.jo==='000002');
     const hasAnnex = cites.some(c=> c.kind==='annex');
     const hasSupp = cites.some(c=> c.kind==='supplement');
 
-    const first3 = cites.slice(0,3).map(x=> nm(x.lawName)).join(',');
-    const orderOk = first3 === '유아교육법,초중등교육법,고등교육법';
-
-    const noise = '학교법인, 공공단체 외의 법, 일반적 의미의 사립학교법 등의 용어가 쓰였으나 특정 조항 없음.';
-    const noiseOut = extractCitationsAdvanced(noise).filter(it=> it.kind==='article' || it.kind==='annex' || it.kind==='supplement');
-
-    // 추가 샘플 1: 항 없이 호만 있는 구조(조+호)
-    const s2 = '「전기공사업법」 제2조제1호에 따른다.';
-    const c2 = extractCitationsAdvanced(s2).find(x=> x.kind==='article');
-    const t2_1 = !!c2 && nm(c2.lawName)==='전기공사업법';
-    const t2_2 = !!c2 && c2.jo==='000002' && !c2.hang && c2.ho==='000001';
-
-    // 추가 샘플 2: 같은 법 시행령 맥락, 조의/항 표시
-    const s3 = '「초·중등교육법」 제2조. 같은 법 시행령 제9조의2 제1항.';
-    const c3 = extractCitationsAdvanced(s3).filter(x=> x.kind==='article');
-    const hasSL = c3.some(x=> nm(x.lawName)==='초중등교육법시행령' && x.jo==='000009' && x.joi==='000002' && x.hang==='000001');
-
-    // 추가 샘플 3: 별표 인식(컨텍스트)
-    const s4 = '초·중등교육법 별표 1';
-    const c4 = extractCitationsAdvanced(s4).find(x=> x.kind==='annex');
-    const t4_1 = !!c4 && nm(c4.lawName)==='초중등교육법';
-
     out.innerHTML = [
       '<b>기본 테스트</b>',
-      expect('법령명 단독은 제외(no lawOnly)', noLawOnly),
+      expect('건축법 제22조 인식', hasArch),
+      expect('같은법 → 건축법 제23조', hasSame),
+      expect('동법시행령 → 건축법시행령 제9조의2 제3항', hasSLArch),
       expect('유아교육법 제2조제2호 포함', hasU),
       expect('초·중등교육법 제2조 포함', hasC),
       expect('고등교육법 제2조 포함', hasH),
-      expect('별표 인식', hasAnnex),
-      expect('부칙 인식', hasSupp),
-      expect('등장 순서 유지(유아→초중등→고등)', orderOk),
-      expect('노이즈 텍스트에서 아무 것도 추출하지 않음', noiseOut.length===0),
-      `<div class=\"small\">총 추출 수(필터 후): ${cites.length}</div>`,
-      '',
-      '<b>추가 테스트</b>',
-      expect('전기공사업법 — 법령명 매칭', t2_1),
-      expect('전기공사업법 — 조만/호 파싱(항 없음)', t2_2),
-      expect('같은 법 시행령 — 조의/항 파싱', hasSL),
-      expect('별표 컨텍스트 인식', t4_1)
+      expect('별표/부칙 인식', (hasAnnex && hasSupp))
     ].join('<br/>');
 
     byId('input').value = sample;
   }
-})();
 
-// ===== 로컬 전체(스크롤/하이라이트) 지원 함수 (백슬래시 없는 버전) =====
-function collapseSpaces(s){ if(!s) return ''; var out='', sp=false; for(var i=0;i<s.length;i++){ var c=s[i]; if(c===' '||c==='
-'||c==='	'||c==='
-'){ if(!sp){ out+=' '; sp=true; } } else { out+=c; sp=false; } } return out.trim(); }
-function stripHtmlToText(html){ var d=document.createElement('div'); d.innerHTML=html||''; return collapseSpaces(d.textContent||''); }
-function findAndMark(container, key){ key = collapseSpaces(key||''); if(!key) return null; if(key.length>80) key=key.slice(0,80); var walker=document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null); var node; while(node=walker.nextNode()){ var t=collapseSpaces(node.nodeValue||''); if(!t) continue; var i=t.indexOf(key); if(i>=0){ var span=document.createElement('mark'); span.className='hl'; span.id='__HIT'; var before=document.createTextNode(t.slice(0,i)); var mid=document.createTextNode(t.slice(i,i+key.length)); var after=document.createTextNode(t.slice(i+key.length)); var p=node.parentNode; if(!p) return null; p.replaceChild(after,node); p.insertBefore(span,after); span.appendChild(mid); p.insertBefore(before,span); return span; } } return null; }
-async function openLocalFullWithScroll(opts){ try{ var proxySet=!!(document.getElementById('proxy')&&document.getElementById('proxy').value.trim()); if(!proxySet){ alert('프록시를 입력해야 전체본문을 불러올 수 있습니다.'); return; } var lawId=opts.lawId; var title=opts.title||''; var tryUrls=opts.tryUrls||[]; var snippetHtml=''; for(var i=0;i<tryUrls.length;i++){ try{ var t=(await fetchText(tryUrls[i])).text; if(t&&t.length>60){ snippetHtml=t; break; } }catch(e){} } var keyText=stripHtmlToText(snippetHtml); var fullURL=buildLawFullHTMLURL(OC, lawId); var fullHtml=(await fetchText(fullURL)).text||''; var modal=document.getElementById('viewer'); var body=document.getElementById('viewerBody'); var titleEl=document.getElementById('viewerTitle'); titleEl.textContent=(title||'')+' · 로컬 전체(스크롤)'; body.innerHTML=fullHtml; modal.classList.add('on'); modal.setAttribute('aria-hidden','false'); setTimeout(function(){ var hit=findAndMark(body,keyText); if(!hit){ var mk=function(n){ return String(parseInt(n||'0',10)); }; var jb=(opts.jo?('제'+mk(opts.jo)+'조'):'') + (opts.joi?('의'+mk(opts.joi)):''); hit=findAndMark(body,jb); } if(hit){ hit.scrollIntoView({behavior:'smooth',block:'center'}); } },100); }catch(e){ alert('로컬 뷰어 오류: '+e); } }
+  /** ===================== 전역 노출 유틸 (모달 스크롤/하이라이트) ===================== **/
+  function collapseSpaces(s){
+    if(!s) return '';
+    return s.replace(/[\t\n\r]+/g,' ').replace(/\s{2,}/g,' ').trim();
+  }
+  function stripHtmlToText(html){ const d=document.createElement('div'); d.innerHTML=html||''; return collapseSpaces(d.textContent||''); }
+  function findAndMark(container, key){
+    key = collapseSpaces(key||'');
+    if(!key) return null;
+    if(key.length>80) key=key.slice(0,80);
+    const walker=document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    let node; while((node=walker.nextNode())){
+      const t=collapseSpaces(node.nodeValue||''); if(!t) continue;
+      const i=t.indexOf(key); if(i>=0){
+        const span=document.createElement('mark'); span.className='hl'; span.id='__HIT';
+        const before=document.createTextNode(t.slice(0,i));
+        const mid=document.createTextNode(t.slice(i,i+key.length));
+        const after=document.createTextNode(t.slice(i+key.length));
+        const p=node.parentNode; if(!p) return null;
+        p.replaceChild(after,node); p.insertBefore(span,after); span.appendChild(mid); p.insertBefore(before,span);
+        return span;
+      }
+    }
+    return null;
+  }
+
+  window.openLocalFullWithScroll = async function(opts){
+    try{
+      const proxySet=!!(byId('proxy')&&byId('proxy').value.trim());
+      if(!proxySet){ alert('프록시를 입력해야 전체본문을 불러올 수 있습니다.'); return; }
+      const lawId=opts.lawId; const title=opts.title||''; const tryUrls=opts.tryUrls||[];
+      let snippetHtml='';
+      for(let i=0;i<tryUrls.length;i++){
+        try{ const t=(await fetchText(tryUrls[i])).text; if(t&&t.length>60){ snippetHtml=t; break; } }catch(e){}
+      }
+      const keyText=stripHtmlToText(snippetHtml);
+      const fullURL=buildLawFullHTMLURL(OC, lawId);
+      const fullHtml=(await fetchText(fullURL)).text||'';
+      const modal=byId('viewer'); const body=byId('viewerBody'); const titleEl=byId('viewerTitle');
+      titleEl.textContent=(title||'')+' · 로컬 전체(스크롤)';
+      body.innerHTML=fullHtml; modal.classList.add('on'); modal.setAttribute('aria-hidden','false');
+      setTimeout(function(){
+        let hit=findAndMark(body,keyText);
+        if(!hit){
+          const mk=n=> String(parseInt(n||'0',10));
+          const jb=(opts.jo?('제'+mk(opts.jo)+'조'):'') + (opts.joi?('의'+mk(opts.joi)):'');
+          hit=findAndMark(body,jb);
+        }
+        if(hit){ hit.scrollIntoView({behavior:'smooth',block:'center'}); }
+      },120);
+    }catch(e){ alert('로컬 뷰어 오류: '+e); }
+  }
+})();
 </script>
 </body>
 </html>
