@@ -60,7 +60,7 @@
     <div>
       <div class="card">
         <div class="row"><span class="badge">OC: bro3362 (고정)</span></div>
-        <div class="row"><label>프록시(선택, CORS 우회)</label><input id="proxy" type="text" placeholder="예: https://your-worker.example.com/?url=" /></div>
+        <div class="row"><label>프록시(고정)</label><input id="proxy" type="text" value="https://law-proxy.hyok96.workers.dev/?url=" readonly /></div>
         <div class="row"><button id="run">추출·검색</button><button class="secondary" id="clear">지우기</button><button class="secondary" id="runTests">테스트 실행</button></div>
         <div class="small">• 브라우저 CORS 때문에 응답을 읽지 못할 수 있습니다. 이때도 링크는 생성됩니다. 프록시를 지정하면 본문 렌더링이 활성화됩니다.</div>
       </div>
@@ -99,7 +99,7 @@
   'use strict';
 
   /** ===================== 상수/도우미 ===================== **/
-  const DRF = 'https://www.law.go.kr/DRF';
+  const DRF = 'http://www.law.go.kr/DRF';
   const OC  = 'bro3362'; // OC 고정값
   let lastAuthFail = false; // 직전 DRF 호출에서 인증오류 감지 여부
 
@@ -112,12 +112,11 @@
     return u.toString();
   }
   function withProxy(url){
-    const p = byId('proxy')?.value?.trim();
-    if(!p) return url;
-    let base = p;
-    // 사용자가 ?url= 형태로 끝내지 않아도 동작하도록 보정
+    // 고정 프록시 (사용자 입력 변경 불가)
+    const baseDefault = 'https://law-proxy.hyok96.workers.dev/?url=';
+    let base = byId('proxy')?.value?.trim() || baseDefault;
     if(!base.includes('?')) base += (base.endsWith('/') ? '' : '/') + '?';
-    if(!/\burl=/.test(base)) base += 'url=';
+    if(!/url=/.test(base)) base += 'url=';
     return base + enc(url);
   }
   function isAuthFailText(txt){ return /사용자인증에 실패하였습니다/.test(txt||''); }
@@ -143,7 +142,7 @@
   /** ===================== 고급 인용 추출 ===================== **/
   const LAW_BASE = `[가-힣A-Za-z0-9·ㆍ\\s]+?법`;
   const LAW_EO   = `(?:시행령|시행규칙)`;
-  const LAW_FULL = `(${LAW_BASE}(?: ${LAW_EO})?)`;
+  const LAW_FULL = `(${LAW_BASE}(?:\s*${LAW_EO})?)`;
   const D   = `\\d+`;
   const MOK = `([가-하])목`;
   const JO  = `제\\s*(${D})(?:\\s*조(?:의\\s*(${D}))?)?`;
@@ -242,9 +241,9 @@
   }
 
   /** ===================== DRF API ===================== **/
-  async function searchLawRow(oc, lawNameCanon){
+  async function searchLawRow(oc, lawQuery){
     lastAuthFail = false;
-    const url = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'JSON', query:lawNameCanon, display:10 });
+    const url = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'JSON', query:lawQuery, display:10 });
     try{
       const { status, text } = await fetchText(url);
       if(isAuthFailText(text) || status===401 || status===403){ lastAuthFail = true; return null; }
@@ -260,7 +259,7 @@
       if(!rows.length) return null;
 
       const clean = s => canonName(s||'');
-      const exact = rows.find(x => clean(x.법령명한글) === clean(lawNameCanon));
+      const exact = rows.find(x => clean(x.법령명한글) === clean(lawQuery));
       return (exact || rows[0]);
     }catch(e){
       console.warn('searchLawRow error', e);
