@@ -106,7 +106,7 @@
   'use strict';
 
   /** ===================== 상수/도우미 ===================== **/
-  const DRF = 'http://www.law.go.kr/DRF';
+  const DRF = 'https://www.law.go.kr/DRF';
   const OC  = 'bro3362'; // OC 고정값
   let lastAuthFail = false; // 직전 DRF 호출에서 인증오류 감지 여부
 
@@ -417,9 +417,9 @@
   function posTip(x,y){ const pad=12; const vw=window.innerWidth, vh=window.innerHeight; const r=tipEl.getBoundingClientRect(); let left=x+pad, top=y+pad; if(left+r.width>vw-8) left=vw-r.width-8; if(top+r.height>vh-8) top=y-r.height-pad; if(top<8) top=8; tipEl.style.left=left+'px'; tipEl.style.top=top+'px'; }
   function hideTip(){ tipEl.style.display='none'; }
   async function fetchArticleHTML(lawId, jo, hang, ho, joi){ const item={jo,hang,ho,joi}; const urls=buildLawJoSubURLs(OC, lawId, item); const tryList=[]; const noHangHasHo=(!hang && !!ho); if(noHangHasHo && urls.joHoHangZero){ tryList.push(urls.joHoHangZero.pad); } if(urls.joHangHo){ if(urls.joHangHo.pad) tryList.push(urls.joHangHo.pad); if(urls.joHangHo.raw) tryList.push(urls.joHangHo.raw); } if(urls.joHo){ if(urls.joHo.pad) tryList.push(urls.joHo.pad); if(urls.joHo.raw) tryList.push(urls.joHo.raw); } if(urls.joOnly){ if(urls.joOnly.pad) tryList.push(urls.joOnly.pad); if(urls.joOnly.raw) tryList.push(urls.joOnly.raw); } for(const u of tryList.filter(Boolean)){ try{ const html=(await fetchText(u)).text; if(html && html.length>60) return html; }catch(e){} } return '<div class="err">조문을 불러오지 못했습니다.</div>'; }
-  document.addEventListener('mousemove', (e)=>{ if(tipEl.style.display==='block') posTip(e.clientX,e.clientY); });
-  document.addEventListener('mouseover', async (e)=>{ const b=e.target.closest('.item b'); if(!b) return; const host=b.closest('.item'); if(!host) return; if(host.dataset.kind!=="article") return; const {lawid,lawname,jo,hang,ho,joi}=host.dataset; showTip(`${lawname} · ${b.textContent}`, '<span class="loading">불러오는 중…</span>', e.clientX, e.clientY); const html=await fetchArticleHTML(lawid, jo||'', hang||'', ho||'', joi||''); showTip(`${lawname} · ${b.textContent}`, html, e.clientX, e.clientY); });
-  document.addEventListener('mouseout', (e)=>{ if(e.target.closest('.item b')) hideTip(); });
+  /* disabled old hover mousemove listener (replaced by improved lazy-search tooltip) */
+  /* disabled old hover mouseover listener (replaced by improved lazy-search tooltip) */
+  /* disabled old hover mouseout listener (replaced by improved lazy-search tooltip) */
 
   /* ===================== Hover tooltip (b 요소 호버 시 즉시 조문 조회) ===================== */
   const __tip = (()=>{ const el=document.createElement('div'); el.className='tooltip'; el.innerHTML='<div class="hdr"></div><div class="cnt"><span class="loading">불러오는 중…</span></div>'; document.body.appendChild(el); return el; })();
