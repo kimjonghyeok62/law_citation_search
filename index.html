@@ -242,27 +242,82 @@
 
   /** ===================== DRF API ===================== **/
   async function searchLawRow(oc, lawQuery){
+    // 보다 탄탄한 검색: JSON → XML → HTML 순차 시도 + 이름 정규화 매칭
     lastAuthFail = false;
-    const url = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'JSON', query:lawQuery, display:10 });
-    try{
+    const wantCanon = canonName(lawQuery||'');
+
+    function pickBest(rows){
+      if(!rows||!rows.length) return null;
+      const clean = s => canonName(s||'');
+      let exact = rows.find(x => clean(x.법령명한글) === wantCanon);
+      if(exact) return exact;
+      let partial = rows.find(x => clean(x.법령명한글).includes(wantCanon) || wantCanon.includes(clean(x.법령명한글)));
+      return partial || rows[0];
+    }
+
+    // 1) JSON 시도 (원문 쿼리 / 정규화 쿼리 두 번 시도)
+    const tryJson = async (q)=>{
+      const url = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'JSON', query:q, display:10 });
       const { status, text } = await fetchText(url);
       if(isAuthFailText(text) || status===401 || status===403){ lastAuthFail = true; return null; }
+      try{
+        const data = JSON.parse(text);
+        const root = (data && data.LawSearch) ? data.LawSearch : data;
+        let rows = [];
+        if(root && root.law){ rows = Array.isArray(root.law) ? root.law : [root.law]; }
+        return pickBest(rows);
+      }catch(e){ return null; }
+    };
 
-      let data = null; try{ data = JSON.parse(text); }catch(e){ }
-      const root = (data && data.LawSearch) ? data.LawSearch : data;
+    let row = await tryJson(lawQuery);
+    if(!row) row = await tryJson(wantCanon);
+    if(row) return row;
 
-      let rows = [];
-      if(root && root.law){
-        if(Array.isArray(root.law)) rows = root.law;
-        else if(typeof root.law === 'object') rows = [root.law];
-      }
-      if(!rows.length) return null;
+    // 2) XML 시도
+    const tryXml = async (q)=>{
+      const url = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'XML', query:q, display:10 });
+      const { status, text } = await fetchText(url);
+      if(isAuthFailText(text) || status===401 || status===403){ lastAuthFail = true; return null; }
+      try{
+        const dom = new DOMParser().parseFromString(text, 'text/xml');
+        const nodes = Array.from(dom.getElementsByTagName('law'));
+        const rows = nodes.map(n=>({
+          법령명한글: (n.getElementsByTagName('법령명한글')[0]?.textContent||'').trim(),
+          법령ID: (n.getElementsByTagName('법령ID')[0]?.textContent||'').trim(),
+          법령일련번호: (n.getElementsByTagName('법령일련번호')[0]?.textContent||'').trim(),
+          법령상세링크: (n.getElementsByTagName('법령상세링크')[0]?.textContent||'').trim()
+        }));
+        return pickBest(rows);
+      }catch(e){ return null; }
+    };
 
-      const clean = s => canonName(s||'');
-      const exact = rows.find(x => clean(x.법령명한글) === clean(lawQuery));
-      return (exact || rows[0]);
-    }catch(e){ console.warn('searchLawRow error', e); }
-    return null;
+    row = await tryXml(lawQuery);
+    if(!row) row = await tryXml(wantCanon);
+    if(row) return row;
+
+    // 3) HTML 시도 (리스트 페이지에서 ID 추출)
+    const tryHtml = async (q)=>{
+      const url = buildURL('/lawSearch.do', { OC:oc, target:'law', type:'HTML', query:q, display:10 });
+      const { status, text } = await fetchText(url);
+      if(isAuthFailText(text) || status===401 || status===403){ lastAuthFail = true; return null; }
+      try{
+        const dom = new DOMParser().parseFromString(text, 'text/html');
+        // 표 안의 행들을 스캔, 링크의 ID 파라미터 추출
+        const links = Array.from(dom.querySelectorAll('a[href*="ID="]'));
+        const rows = links.map(a=>{
+          const href=a.getAttribute('href')||'';
+          const idMatch=href.match(/ID=([^&]+)/);
+          const name=(a.textContent||'').trim();
+          return { 법령명한글:name, 법령ID:idMatch?decodeURIComponent(idMatch[1]):'' };
+        }).filter(x=>x.법령ID);
+        return pickBest(rows);
+      }catch(e){ return null; }
+    };
+
+    row = await tryHtml(lawQuery);
+    if(!row) row = await tryHtml(wantCanon);
+
+    return row || null;
   }
 
   function buildLawJoSubURLs(oc,id,item){
@@ -323,7 +378,7 @@
       li.innerHTML = `<div><b>${it.raw||it.disp||it.lawName}</b> <span class="small">(${it.disp||it.lawName})</span><div class="small">검색 중...</div></div>`;
       resUl.appendChild(li);
 
-      const row = await searchLawRow(OC, it.lawName);
+      const row = await searchLawRow(OC, it.disp || it.lawName);
       if(!row){
         const publicSearch = publicSearchURL(it.disp||it.lawName);
         const publicDirect = publicLawURL(it.disp||it.lawName);
