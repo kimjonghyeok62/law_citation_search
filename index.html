@@ -421,7 +421,40 @@
   document.addEventListener('mouseover', async (e)=>{ const b=e.target.closest('.item b'); if(!b) return; const host=b.closest('.item'); if(!host) return; if(host.dataset.kind!=="article") return; const {lawid,lawname,jo,hang,ho,joi}=host.dataset; showTip(`${lawname} · ${b.textContent}`, '<span class="loading">불러오는 중…</span>', e.clientX, e.clientY); const html=await fetchArticleHTML(lawid, jo||'', hang||'', ho||'', joi||''); showTip(`${lawname} · ${b.textContent}`, html, e.clientX, e.clientY); });
   document.addEventListener('mouseout', (e)=>{ if(e.target.closest('.item b')) hideTip(); });
 
-  /** ===================== 바인딩 ===================== **/
+  /* ===================== Hover tooltip (b 요소 호버 시 즉시 조문 조회) ===================== */
+  const __tip = (()=>{ const el=document.createElement('div'); el.className='tooltip'; el.innerHTML='<div class="hdr"></div><div class="cnt"><span class="loading">불러오는 중…</span></div>'; document.body.appendChild(el); return el; })();
+  function __tipShow(title, html, x, y){ __tip.querySelector('.hdr').textContent=title||''; __tip.querySelector('.cnt').innerHTML=html||''; __tip.style.display='block'; __tipPos(x,y); }
+  function __tipPos(x,y){ const pad=12; const vw=window.innerWidth, vh=window.innerHeight; const r=__tip.getBoundingClientRect(); let left=x+pad, top=y+pad; if(left+r.width>vw-8) left=vw-r.width-8; if(top+r.height>vh-8) top=y-r.height-pad; if(top<8) top=8; __tip.style.left=left+'px'; __tip.style.top=top+'px'; }
+  function __tipHide(){ __tip.style.display='none'; }
+  const __lawIdCache = Object.create(null);
+  async function __hoverFetchAndShow(bEl, ev){
+    try{
+      const host = bEl.closest('.item'); if(!host) return;
+      // (법명) 추출
+      const small = host.querySelector('.small');
+      const nameInParen = small ? (small.textContent||'').trim() : '';
+      const lawName = (nameInParen.match(/\((.+)\)/)||[])[1] || nameInParen || '';
+      if(!lawName) return;
+      // b 텍스트와 합쳐서 기존 파서(EXPL_RE) 재사용
+      const combo = `${lawName} ${bEl.textContent||''}`;
+      let m = EXPL_RE.exec(combo); EXPL_RE.lastIndex = 0;
+      let jo=null,joi=null,hang=null,ho=null;
+      if(m){ jo=m[3]||m[2]||m[1]; joi=m[4]||null; hang=m[5]||null; ho=m[6]||null; }
+      // 표시
+      __tipShow(`${lawName} · ${bEl.textContent}`, '<span class="loading">불러오는 중…</span>', ev.clientX, ev.clientY);
+      // ID 조회(캐시)
+      let lawId = __lawIdCache[lawName];
+      if(!lawId){ const row = await searchLawRow(OC, lawName); lawId = row && (row.법령ID||row.id); if(lawId) __lawIdCache[lawName]=lawId; }
+      if(!lawId){ __tipShow(`${lawName} · ${bEl.textContent}`, `<div class="err">법령ID를 찾지 못했습니다. <a target="_blank" rel="noopener" href="${publicSearchURL(lawName)}">국가법령정보 검색</a></div>`, ev.clientX, ev.clientY); return; }
+      const html = await (async()=>{ const item={ jo:jo?String(jo).padStart(6,'0'):null, joi:joi?String(joi).padStart(6,'0'):null, hang:hang?String(hang).padStart(6,'0'):null, ho:ho?String(ho).padStart(6,'0'):null }; return await (async()=>{ const urls=buildLawJoSubURLs(OC, lawId, item); const tryList=[]; const noHangHasHo=(!item.hang && !!item.ho); if(noHangHasHo && urls.joHoHangZero){ tryList.push(urls.joHoHangZero.pad); } if(urls.joHangHo){ if(urls.joHangHo.pad) tryList.push(urls.joHangHo.pad); if(urls.joHangHo.raw) tryList.push(urls.joHangHo.raw); } if(urls.joHo){ if(urls.joHo.pad) tryList.push(urls.joHo.pad); if(urls.joHo.raw) tryList.push(urls.joHo.raw); } if(urls.joOnly){ if(urls.joOnly.pad) tryList.push(urls.joOnly.pad); if(urls.joOnly.raw) tryList.push(urls.joOnly.raw); } for(const u of tryList.filter(Boolean)){ try{ const html=(await fetchText(u)).text; if(html && html.length>60) return html; }catch(e){} } return '<div class="err">조문을 불러오지 못했습니다.</div>'; })(); })();
+      __tipShow(`${lawName} · ${bEl.textContent}`, html, ev.clientX, ev.clientY);
+    }catch(e){ __tipShow('오류', `<div class="err">${e+''}</div>`, ev.clientX, ev.clientY); }
+  }
+  document.addEventListener('mousemove', (e)=>{ if(__tip.style.display==='block') __tipPos(e.clientX,e.clientY); });
+  document.addEventListener('mouseover', (e)=>{ const b=e.target.closest('.item b'); if(!b) return; __hoverFetchAndShow(b, e); });
+  document.addEventListener('mouseout', (e)=>{ if(e.target.closest('.item b')) __tipHide(); });
+
+/** ===================== 바인딩 ===================== **/
   document.addEventListener('DOMContentLoaded', function(){
     const runBtn   = byId('run');
     const clearBtn = byId('clear');
