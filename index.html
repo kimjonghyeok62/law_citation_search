@@ -219,6 +219,46 @@
   const CTX_WORD = '(?:같은\\s*법|이\\s*법|동\\s*법|같은\\s*법률|이\\s*법률|동\\s*법률|같은\\s*법\\s*시행령|동\\s*법\\s*시행령|이\\s*영|동\\s*시행령|같은\\s*법\\s*시행규칙|동\\s*법\\s*시행규칙|이\\s*규칙|동\\s*규칙)';
   const CTX_RE   = new RegExp(`(${CTX_WORD})\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
 
+  // …(정규식 선언들 아래에 추가)…
+  
+  /** 보조: 텍스트에서 조/의/항/호/목 파싱 (따옴표/공백변형/단독조문까지) */
+  function parseCitationParts(text, lawName){
+    if(!text) return null;
+    let s = String(text)
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\u00A0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  
+    // 1) 「…」 표기: 「사립학교법」 제43조 …
+    QUOTED_RE.lastIndex = 0;
+    let mq = QUOTED_RE.exec(s);
+    if (mq) {
+      return { jo: mq[2], joi: mq[3]||null, hang: mq[4]||null, ho: mq[5]||null, mok: mq[6]||null };
+    }
+  
+    // 2) 명시적 법명 + 조문: 사립학교법 제43조 …
+    EXPL_RE.lastIndex = 0;
+    let me = EXPL_RE.exec(s);
+    if (me) {
+      return { jo: me[2], joi: me[3]||null, hang: me[4]||null, ho: me[5]||null, mok: (me[6]&&(me[6].match(/[가-하]/)||[])[0])||null };
+    }
+  
+    // 3) 조문만 단독: 제43조(의2) 제1항 제3호 가목 …
+    const JO_ONLY_RE = new RegExp(`${JO}${HANG}${HO}${MOKRE}`);
+    let mj = JO_ONLY_RE.exec(s);
+    if (mj) {
+      return { jo: mj[1], joi: mj[2]||null, hang: mj[3]||null, ho: mj[4]||null, mok: (mj[5]&&(mj[5].match(/[가-하]/)||[])[0])||null };
+    }
+  
+    // 4) lawName과 합쳐 재시도 (b 태그 안에 '제43조'만 있는 경우)
+    if (lawName) {
+    const parsed = parseCitationParts(rawB, lawName);
+    if (parsed) { ({ jo, joi, hang, ho, mok } = parsed); }
+    }
+    return null;
+  }
+
   /** ========== 검색 보조: generateAlternatives ========== **/
   // 검색 쿼리 유사변형(오타/띄어쓰기/용어 혼동) 생성
   function generateAlternatives(q){
@@ -578,7 +618,12 @@
       let m = EXPL_RE.exec(rawB); EXPL_RE.lastIndex = 0;
       if(!m){ const combo2 = `${lawName} ${rawB}`; m = EXPL_RE.exec(combo2); EXPL_RE.lastIndex = 0; }
       if(m){ jo = m[2]||null; joi = m[3]||null; hang = m[4]||null; ho = m[5]||null; mok = (m[6] && (m[6].match(/[가-하]/)||[])[0]) || null; }
-      if(!jo){ tipShow(`${lawName} · ${rawB}`, `<div class="err">조 번호를 해석하지 못했습니다.</div>`, ev.clientX, ev.clientY); return; }
+      if(!jo){
+        tipShow(`${lawName} · ${rawB}`,
+          `<div class="err">조 번호를 해석하지 못했습니다. (입력: ${rawB})</div>`,
+          ev.clientX, ev.clientY);
+        return;
+      }
 
       tipShow(`${lawName} · ${rawB}`, '<span class="loading">불러오는 중…</span>', ev.clientX, ev.clientY);
 
