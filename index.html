@@ -313,11 +313,11 @@
 
   function pad(n,w){ return String(parseInt(n,10)).padStart(w,'0'); }
   function joTo6(jo, joi){
-    if(joi){
-      const head = pad(jo,4); // 예: 10 -> 0010
-      const tail = pad(joi,2); // 예: 2 -> 02
-      return head + tail;      // 001002
-    }
+    const head = pad(jo,4); // 조는 앞 4자리
+    // DRF 규칙: 마지막 2자리는 '의' 번호(없으면 00)
+    if(joi) return head + pad(joi,2); // 예: 10조의2 -> 001002
+    return head + '00';               // 예: 22조 -> 000220, 3조 -> 000300
+  }
     return pad(jo,6);         // 예: 22 -> 000220, 3 -> 000300
   }
 
@@ -335,6 +335,7 @@
       JO: joTo6(jo, joi)
     };
     if(hang) params.HANG = pad(hang,6);
+    else if(ho) params.HANG = '000000'; // DRF: 호만 있으면 HANG=000000 필요
     if(ho)   params.HO   = pad(ho,6);
     if(mok)  params.MOK  = mok;
     return buildURL('/lawService.do', params);
@@ -358,7 +359,7 @@
       type:'JSON',
       ID:id,
       JO: joTo6(jo, joi),
-      HANG: hang?pad(hang,6):'',
+      HANG: hang?pad(hang,6):(ho?'000000':''),
       HO: ho?pad(ho,6):'',
       MOK: mok||''
     });
