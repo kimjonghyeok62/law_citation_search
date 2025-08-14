@@ -65,7 +65,7 @@
     <div>
       <div class="card">
         <div class="row"><span class="badge">OC: bro3362 (고정)</span></div>
-        <!-- 원하시면 본인 Workers 주소로 바꾸세요 -->
+        <!-- 본인 Workers 주소로 바꿔도 됩니다 -->
         <div class="row"><label>프록시</label><input id="proxy" type="text" value="https://law-proxy.hyok96.workers.dev/?url=" /></div>
         <div class="row"><button id="run">추출·검색</button><button class="secondary" id="clear">지우기</button><button class="secondary" id="runTests">테스트 실행</button></div>
         <div class="small">• CORS로 본문을 못 읽을 때 프록시가 자동으로 사용됩니다.</div>
@@ -125,13 +125,13 @@
     return base + encodeURIComponent(url);
   }
   async function fetchTextDirectOrProxy(url){
-    // 1) 직접 시도
+    // 1) 직접
     try{
       const r = await fetch(url, { mode:'cors' });
       const t = await r.text();
       if (t && t.length > 20) return t;
     }catch(_){}
-    // 2) 프록시 폴백
+    // 2) 프록시
     try{
       const r2 = await fetch(withProxy(url));
       const t2 = await r2.text();
@@ -204,10 +204,36 @@
   const CTX_WORD = '(?:같은\\s*법|이\\s*법|동\\s*법|같은\\s*법\\s*시행령|동\\s*법\\s*시행령|이\\s*영|동\\s*시행령|같은\\s*법\\s*시행규칙|동\\s*법\\s*시행규칙|이\\s*규칙|동\\s*규칙)';
   const CTX_RE   = new RegExp(`(${CTX_WORD})\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
 
+  /** ========== 유사명(오타) 자동 보정 ========== **/
+  // 검색 실패 시 아래 변형을 순차 시도
+  function generateAlternatives(q){
+    const s = displayName(q||'').replace(/\s+/g,'').trim();
+    const alts = new Set();
+
+    // 1) "영유아교육법" → "유아교육법", "영유아보육법"
+    if (/^영유아교육법$/.test(s)) { alts.add('유아교육법'); alts.add('영유아보육법'); }
+
+    // 2) '법' 중복/공백/오탈자 정리
+    alts.add(s.replace(/[^가-힣A-Za-z0-9]/g,''));
+    alts.add(s.replace(/교육/g,'보육')); // 교육↔보육 혼동 대비
+    alts.add(s.replace(/보육/g,'교육'));
+
+    // 3) "시행령/시행규칙" 붙임·띄어쓰기 교정
+    if (/시행령$/.test(s)) alts.add(s.replace(/시행령$/,' 시행령'));
+    if (/시행규칙$/.test(s)) alts.add(s.replace(/시행규칙$/,' 시행규칙'));
+
+    // 4) 접두 불용어 제거
+    alts.add(refineLawName(q));
+
+    // 원본은 마지막에
+    alts.add(q);
+    return [...alts].filter(Boolean);
+  }
+
   /** ========== DRF 검색/URL ========== **/
   async function searchLawRow(lawQuery){
-    const wantCanon = canonName(refineLawName(lawQuery||''));
-    const pickBest = (rows)=>{
+    const variants = generateAlternatives(lawQuery);
+    const pickBest = (rows, wantCanon)=>{
       if(!rows||!rows.length) return null;
       const clean = s => canonName(refineLawName(s||''));
       let exact = rows.find(x => clean(x.법령명한글) === wantCanon);
@@ -216,24 +242,19 @@
       return partial || rows[0];
     };
 
-    const tryJson = async (q)=>{
-      const url = buildURL('/lawSearch.do', { OC, target:'law', type:'JSON', query:q, display:10 });
+    const tryJson = async (qCanon,qRaw)=>{
+      const url = buildURL('/lawSearch.do', { OC, target:'law', type:'JSON', query:qRaw, display:10 });
       const text = await fetchTextDirectOrProxy(url);
       try{
         const data = JSON.parse(text);
         const root = (data && data.LawSearch) ? data.LawSearch : data;
         let rows = [];
         if(root && root.law){ rows = Array.isArray(root.law) ? root.law : [root.law]; }
-        return pickBest(rows);
+        return pickBest(rows, qCanon);
       }catch(e){ return null; }
     };
-
-    let row = await tryJson(wantCanon) || await tryJson(lawQuery);
-    if(row) return row;
-
-    // XML/HTML 백업 경로
-    const tryXml = async (q)=>{
-      const url = buildURL('/lawSearch.do', { OC, target:'law', type:'XML', query:q, display:10 });
+    const tryXml = async (qCanon,qRaw)=>{
+      const url = buildURL('/lawSearch.do', { OC, target:'law', type:'XML', query:qRaw, display:10 });
       const text = await fetchTextDirectOrProxy(url);
       try{
         const dom = new DOMParser().parseFromString(text, 'text/xml');
@@ -244,14 +265,11 @@
           법령일련번호: (n.getElementsByTagName('법령일련번호')[0]?.textContent||'').trim(),
           법령상세링크: (n.getElementsByTagName('법령상세링크')[0]?.textContent||'').trim()
         }));
-        return pickBest(rows);
+        return pickBest(rows, qCanon);
       }catch(e){ return null; }
     };
-    row = await tryXml(wantCanon) || await tryXml(lawQuery);
-    if(row) return row;
-
-    const tryHtml = async (q)=>{
-      const url = buildURL('/lawSearch.do', { OC, target:'law', type:'HTML', query:q, display:10 });
+    const tryHtml = async (qCanon,qRaw)=>{
+      const url = buildURL('/lawSearch.do', { OC, target:'law', type:'HTML', query:qRaw, display:10 });
       const text = await fetchTextDirectOrProxy(url);
       try{
         const dom = new DOMParser().parseFromString(text, 'text/html');
@@ -262,11 +280,18 @@
           const name=(a.textContent||'').trim();
           return { 법령명한글:name, 법령ID:idMatch?decodeURIComponent(idMatch[1]):'' };
         }).filter(x=>x.법령ID);
-        return pickBest(rows);
+        return pickBest(rows, qCanon);
       }catch(e){ return null; }
     };
-    row = await tryHtml(wantCanon) || await tryHtml(lawQuery);
-    return row || null;
+
+    for(const q of variants){
+      const canon = canonName(refineLawName(q));
+      let row = await tryJson(canon,q);
+      if(!row) row = await tryXml(canon,q);
+      if(!row) row = await tryHtml(canon,q);
+      if(row) return row;
+    }
+    return null;
   }
 
   function buildLawJoSubURLs(id,item){
@@ -433,7 +458,6 @@
       li.dataset.lawname = (it.disp||it.lawName)||'';
       li.dataset.jo = it.jo||''; li.dataset.joi = it.joi||''; li.dataset.hang = it.hang||''; li.dataset.ho = it.ho||'';
 
-      // 항목 내 링크 묶음 + 즉시 렌더링 시도
       if(it.kind==='article'){
         const urls = buildLawJoSubURLs(lawId, it);
         const tryList=[];
@@ -443,7 +467,6 @@
         if(urls.joHo){ if(urls.joHo.pad) tryList.push(urls.joHo.pad); if(urls.joHo.raw) tryList.push(urls.joHo.raw); }
         if(urls.joOnly){ if(urls.joOnly.pad) tryList.push(urls.joOnly.pad); if(urls.joOnly.raw) tryList.push(urls.joOnly.raw); }
 
-        // 미리 한 번 본문 렌더링(있으면 좋음)
         (async ()=>{
           let html='';
           for(const u of tryList.filter(Boolean)){
@@ -472,7 +495,6 @@
         })();
       }else{
         const fullURL = buildLawFullHTMLURL(lawId);
-        const label = it.kind==='annex' ? `별표 ${it.annexNo||''}` : (it.kind==='supplement' ? `부칙 ${it.suppNo||''}` : '전체 본문');
         const a = document.createElement('div');
         a.innerHTML = `• 전체 본문: <a target="_blank" rel="noopener" href="${fullURL}">law(HTML)</a>`;
         li.appendChild(a);
@@ -509,9 +531,7 @@
       const rawB = (bEl.textContent || '').replace(/\u00A0/g,' ').trim();
       let jo=null, joi=null, hang=null, ho=null;
 
-      // 1) <b> 텍스트만 파싱
       let m = EXPL_RE.exec(rawB); EXPL_RE.lastIndex = 0;
-      // 2) 실패 시 법명+텍스트 재시도
       if(!m){ const combo2 = `${lawName} ${rawB}`; m = EXPL_RE.exec(combo2); EXPL_RE.lastIndex = 0; }
       if(m){ jo = m[2]||null; joi = m[3]||null; hang = m[4]||null; ho = m[5]||null; }
 
@@ -532,13 +552,11 @@
       if(urls.joHo){ if(urls.joHo.pad) tryList.push(urls.joHo.pad); if(urls.joHo.raw) tryList.push(urls.joHo.raw); }
       if(urls.joOnly){ if(urls.joOnly.pad) tryList.push(urls.joOnly.pad); if(urls.joOnly.raw) tryList.push(urls.joOnly.raw); }
 
-      let html=null, tried=0;
+      let html=null;
       for(const u of tryList.filter(Boolean)){
-        tried++;
         const t = await fetchTextDirectOrProxy(u);
         if(t && t.length>20 && !isFailPage(t)){ html = t; break; }
       }
-
       if(!html){
         const full = await fetchTextDirectOrProxy(buildLawFullHTMLURL(lawId));
         if(full && full.length>200 && !isFailPage(full)){
@@ -570,11 +588,12 @@
         '또한 「유아교육법」 제2조제2호, 「초·중등교육법」 제2조 및 「고등교육법」 제2조를 따른다.',
         '같은 법 시행령 제9조의2 제1항을 적용한다.',
         '그리고 별표 1과 부칙 1을 참고한다.',
-        '… 2025. 6. 30.까지 유아교육법 제30조를 준용한다.'
+        '… 2025. 6. 30.까지 유아교육법 제30조를 준용한다.',
+        '오타 테스트: 영유아교육법 제1조 (→ 유아교육법/영유아보육법 자동 보정)'
       ].join(' ');
       byId('input').value = sample;
       handleRun();
-      byId('testOutput').innerHTML = '샘플 본문으로 실행했습니다. (까지/불용어 정리 + 툴팁 폴백 포함)';
+      byId('testOutput').innerHTML = '샘플 본문으로 실행했습니다. (오타/유사명 자동 보정, 프록시 폴백 포함)';
     });
   });
 })();
