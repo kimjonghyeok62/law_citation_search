@@ -179,16 +179,16 @@
   }
   const _normCtx = s => (s||'').replace(/\s+/g,'');
   const CTX_KEY = {
-    BASE: /(같은\s*법|이\s*법|동\s*법)/,
+    BASE: /(같은\s*법|이\s*법|동\s*법|같은\s*법률|이\s*법률|동\s*법률)/,
     SL: /(동\s*법\s*시행령|같은\s*법\s*시행령|이\s*영|동\s*시행령)/,
     SK: /(동\s*법\s*시행규칙|같은\s*법\s*시행규칙|이\s*규칙|동\s*규칙)/
   };
   function isContextualName(nameRaw){
     const n = _normCtx(nameRaw);
-    return n==='같은법'||n==='이법'||n==='동법'||n==='같은법시행령'||n==='동법시행령'||n==='같은법시행규칙'||n==='동법시행규칙'||n==='이영'||n==='동시행령'||n==='이규칙'||n==='동규칙';
+    return n==='같은법'||n==='이법'||n==='동법'||n==='같은법시행령'||n==='동법시행령'||n==='같은법시행규칙'||n==='동법시행규칙'||n==='이영'||n==='동시행령'||n==='이규칙'||n==='동규칙'||n==='같은법률'||n==='이법률'||n==='동법률';
   }
 
-  const LAW_BASE = `[가-힣A-Za-z0-9·ㆍ\\s]+?법`;
+  const LAW_BASE = `[가-힣A-Za-z0-9·ㆍ\\s]+?(?:법|법률)`;
   const LAW_EO   = `(?:시행령|시행규칙)`;
   const LAW_FULL = `(${LAW_BASE}(?:\\s*${LAW_EO})?)`;
   const D   = `\\d+`;
@@ -198,10 +198,10 @@
   const HO  = `(?:\\s*제?\\s*(${D})\\s*호)?`;
   const MOKRE = `(?:\\s*(${MOK}))?`;
   const EXPL_RE = new RegExp(`${LAW_FULL}\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
-  const QUOTED_RE = /「\s*([가-힣A-Za-z0-9·ㆍ\s]+?법(?:\s*(?:시행령|시행규칙))?)\s*」\s*제\s*(\d+)\s*조(?:\s*의\s*(\d+))?(?:\s*제?\s*(\d+)\s*항)?(?:\s*제?\s*(\d+)\s*호)?(?:\s*([가-하])\s*목)?/g;
+  const QUOTED_RE = /「\s*([가-힣A-Za-z0-9·ㆍ\s]+?(?:법|법률)(?:\s*(?:시행령|시행규칙))?)\s*」\s*제\s*(\d+)\s*조(?:\s*의\s*(\d+))?(?:\s*제?\s*(\d+)\s*항)?(?:\s*제?\s*(\d+)\s*호)?(?:\s*([가-하])\s*목)?/g;
   const BYEOLPYO_RE = /(?:별표|[별附]표)\s*(\d+)?/g;
   const BUCHIK_RE   = /부칙\s*(\d+)?/g;
-  const CTX_WORD = '(?:같은\\s*법|이\\s*법|동\\s*법|같은\\s*법\\s*시행령|동\\s*법\\s*시행령|이\\s*영|동\\s*시행령|같은\\s*법\\s*시행규칙|동\\s*법\\s*시행규칙|이\\s*규칙|동\\s*규칙)';
+  const CTX_WORD = '(?:같은\\s*법|이\\s*법|동\\s*법|같은\\s*법률|이\\s*법률|동\\s*법률|같은\\s*법\\s*시행령|동\\s*법\\s*시행령|이\\s*영|동\\s*시행령|같은\\s*법\\s*시행규칙|동\\s*법\\s*시행규칙|이\\s*규칙|동\\s*규칙)';
   const CTX_RE   = new RegExp(`(${CTX_WORD})\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
 
   /** ========== 유사명(오타) 자동 보정 ========== **/
@@ -362,11 +362,22 @@
     const seen = new Set();
 
     for(const t of tokens){
+      // reset regex lastIndex for each new sentence token
+      EXPL_RE.lastIndex = 0;
+      QUOTED_RE.lastIndex = 0;
+      CTX_RE.lastIndex = 0;
+      BYEOLPYO_RE.lastIndex = 0;
+      BUCHIK_RE.lastIndex = 0;
+
       // (A) 명시적 법명 → 기반 업데이트
       let m0; const LAW_NAME_ONLY_RE = new RegExp(LAW_FULL, 'g');
       while((m0 = LAW_NAME_ONLY_RE.exec(t))){
-        const rawName = refineLawName(displayName(m0[1])); if(isContextualName(rawName)) continue;
-        updateBaseFromName(rawName);
+        const rawNameText = displayName(m0[1]);
+        if(isContextualName(rawNameText)) continue;
+        const refined = refineLawName(rawNameText);
+        if(!refined) continue;
+        if(isContextualName(refined)) continue;
+        updateBaseFromName(refined);
       }
 
       // (B) 「…」 표기
@@ -380,7 +391,11 @@
       // (C) 일반 인용
       let m; while((m = EXPL_RE.exec(t))){
         const [raw, rawName, joNum, joUi, hang, ho, mokAll] = m;
-        const disp = refineLawName(displayName(rawName)); if(isContextualName(disp)) continue;
+        const rawNameText = displayName(rawName);
+        if(isContextualName(rawNameText)) continue;
+        const disp = refineLawName(rawNameText);
+        if(!disp) continue;
+        if(isContextualName(disp)) continue;
         pushUnique(seen, cites, { raw, lawName: canonName(disp), disp, jo: joNum?pad6(joNum):null, joi: joUi?pad6(joUi):null, hang: hang?pad6(hang):null, ho: ho?pad6(ho):null, mok: mokAll?mokAll.match(/[가-하]/)?.[0]||null:null, kind:'article' });
         updateBaseFromName(disp);
       }
@@ -388,18 +403,21 @@
       // (D) 컨텍스트 인용
       while((m = CTX_RE.exec(t))){
         const [raw, ctxWord, joNum, joUi, hang, ho, mokAll] = m;
-        const resolved = resolveContextualName(ctxWord); if(!resolved) continue;
+        const resolved = resolveContextualName(ctxWord);
+        if(!resolved) continue;
         const disp = refineLawName(displayName(resolved));
         pushUnique(seen, cites, { raw, lawName: canonName(disp), disp, jo: joNum?pad6(joNum):null, joi: joUi?pad6(joUi):null, hang: hang?pad6(hang):null, ho: ho?pad6(ho):null, mok: mokAll?mokAll.match(/[가-하]/)?.[0]||null:null, kind:'article' });
       }
 
       // (E) 별표/부칙
       let bp; while((bp = BYEOLPYO_RE.exec(t))){
-        const target = lastExplicitBase.법 || lastExplicitBase.영 || lastExplicitBase.규; if(!target) continue;
+        const target = lastExplicitBase.법 || lastExplicitBase.영 || lastExplicitBase.규;
+        if(!target) continue;
         pushUnique(seen, cites, { raw: bp[0], lawName: canonName(target), disp: refineLawName(displayName(target)), kind:'annex', annexNo: bp[1]||null });
       }
       let bc; while((bc = BUCHIK_RE.exec(t))){
-        const target = lastExplicitBase.법 || lastExplicitBase.영 || lastExplicitBase.규; if(!target) continue;
+        const target = lastExplicitBase.법 || lastExplicitBase.영 || lastExplicitBase.규;
+        if(!target) continue;
         pushUnique(seen, cites, { raw: bc[0], lawName: canonName(target), disp: refineLawName(displayName(target)), kind:'supplement', suppNo: bc[1]||null });
       }
     }
@@ -531,6 +549,7 @@
       const rawB = (bEl.textContent || '').replace(/\u00A0/g,' ').trim();
       let jo=null, joi=null, hang=null, ho=null;
 
+      EXPL_RE.lastIndex = 0;
       let m = EXPL_RE.exec(rawB); EXPL_RE.lastIndex = 0;
       if(!m){ const combo2 = `${lawName} ${rawB}`; m = EXPL_RE.exec(combo2); EXPL_RE.lastIndex = 0; }
       if(m){ jo = m[2]||null; joi = m[3]||null; hang = m[4]||null; ho = m[5]||null; }
