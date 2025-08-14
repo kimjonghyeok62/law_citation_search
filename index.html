@@ -66,7 +66,7 @@
       <div class="card">
         <div class="row"><span class="badge">OC: bro3362 (고정)</span></div>
         <div class="row"><label>프록시</label><input id="proxy" type="text" value="https://law-proxy.hyok96.workers.dev/?url=" /></div>
-        <div class="row"><button id="run">추출·검색</button><button class="secondary" id="clear">지우기</button><button class="secondary" id="runTests">테스트 실행</button></div>
+        <div class="row"><button id="run">추출·검색</button><button class="secondary" id="clear">지우기</button><button class="secondary" id="runTests">테스트 실행</button><button class="secondary" id="runTests2">테스트(추가)</button></div>
         <div class="small">• CORS로 본문을 못 읽을 때 프록시가 자동 사용됩니다.</div>
       </div>
     </div>
@@ -145,6 +145,20 @@
   }
   function publicLawURL(name){ return 'https://www.law.go.kr/법령/' + enc(name); }
 
+  // ===== 삽입: 외부 HTML을 안전하게 임베드하기 위한 정리 함수 =====
+  function sanitizeForEmbed(html){
+    try{
+      if(!html) return '';
+      if(isFailPage(html)) return '<div class="err">원문 페이지에서 조문을 찾지 못했습니다.</div>';
+      const doc = document.implementation.createHTMLDocument('');
+      doc.body.innerHTML = html;
+      doc.querySelectorAll('script,style,link,meta,iframe,header,footer,nav').forEach(n=>n.remove());
+      const bodyHTML = doc.body.innerHTML;
+      const MAX = 12000; // 12KB 미리보기 제한
+      return bodyHTML.length > MAX ? bodyHTML.slice(0, MAX) + '<div class="small">…(생략)</div>' : bodyHTML;
+    }catch(_){ return ''; }
+  }
+
   async function fetchPublicLawSnippet(lawName, jo, joi){
     try{
       const url = publicLawURL(lawName);
@@ -204,6 +218,34 @@
   const BUCHIK_RE   = /부칙\s*(\d+)?/g;
   const CTX_WORD = '(?:같은\\s*법|이\\s*법|동\\s*법|같은\\s*법률|이\\s*법률|동\\s*법률|같은\\s*법\\s*시행령|동\\s*법\\s*시행령|이\\s*영|동\\s*시행령|같은\\s*법\\s*시행규칙|동\\s*법\\s*시행규칙|이\\s*규칙|동\\s*규칙)';
   const CTX_RE   = new RegExp(`(${CTX_WORD})\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
+
+  /** ========== 검색 보조: generateAlternatives ========== **/
+  // 검색 쿼리 유사변형(오타/띄어쓰기/용어 혼동) 생성
+  function generateAlternatives(q){
+    const s = displayName(q||'').replace(/\s+/g,'').trim();
+    const alts = new Set();
+
+    // 특수 케이스: 영유아교육법 → 유아교육법, 영유아보육법
+    if(/^영유아교육법$/.test(s)) { alts.add('유아교육법'); alts.add('영유아보육법'); }
+
+    // 기초 정규화: 특수문자 제거, 보육/교육 교차 변환 시도
+    if(s) alts.add(s.replace(/[^가-힣A-Za-z0-9]/g,''));
+    if(s.includes('교육')) alts.add(s.replace(/교육/g,'보육'));
+    if(s.includes('보육')) alts.add(s.replace(/보육/g,'교육'));
+
+    // 시행령/시행규칙 붙임/띄어쓰기 변형
+    if(/시행령$/.test(s)) alts.add(s.replace(/시행령$/, ' 시행령'));
+    if(/시행규칙$/.test(s)) alts.add(s.replace(/시행규칙$/, ' 시행규칙'));
+
+    // refineLawName로 핵심 명칭만 추출
+    const refined = refineLawName(q);
+    if(refined) alts.add(refined);
+
+    // 원본도 포함
+    if(q) alts.add(q);
+
+    return [...alts].filter(Boolean);
+  }
 
   /** ========== DRF 검색/URL ========== **/
   async function searchLawRow(lawQuery){
@@ -498,7 +540,7 @@
             if(sn) html = sn;
           }
 
-          if(html){ const box = document.createElement('div'); box.innerHTML = html; li.appendChild(box); }
+          if(html){ const box = document.createElement('div'); box.innerHTML = sanitizeForEmbed(html); li.appendChild(box); }
           else { const warn=document.createElement('div'); warn.className='small'; warn.textContent='조문을 불러오지 못했습니다.'; li.appendChild(warn); }
         })();
       }else{
@@ -512,7 +554,7 @@
 
   /** ========== 툴팁 ========== **/
   const tip = (()=>{ const el=document.createElement('div'); el.className='tooltip'; el.innerHTML='<div class="hdr"></div><div class="cnt"><span class="loading">불러오는 중…</span></div>'; document.body.appendChild(el); return el; })();
-  function tipShow(title, html, x, y){ tip.querySelector('.hdr').textContent=title||''; tip.querySelector('.cnt').innerHTML=html||''; tip.style.display='block'; tipPos(x,y); }
+  function tipShow(title, html, x, y){ tip.querySelector('.hdr').textContent=title||''; tip.querySelector('.cnt').innerHTML = sanitizeForEmbed(html) || '<span class="loading">내용이 없습니다.</span>'; tip.style.display='block'; tipPos(x,y); }
   function tipPos(x,y){ const pad=12; const vw=innerWidth, vh=innerHeight; const r=tip.getBoundingClientRect(); let left=x+pad, top=y+pad; if(left+r.width>vw-8) left=vw-r.width-8; if(top+r.height>vh-8) top=y-r.height-pad; if(top<8) top=8; tip.style.left=left+'px'; tip.style.top=top+'px'; }
   function tipHide(){ tip.style.display='none'; }
 
@@ -566,6 +608,8 @@
   document.addEventListener('DOMContentLoaded', function(){
     byId('run')?.addEventListener('click', handleRun);
     byId('clear')?.addEventListener('click', ()=>{ byId('foundList').innerHTML=''; byId('resList').innerHTML=''; });
+
+    // 기존 테스트: 변경 금지
     byId('runTests')?.addEventListener('click', ()=>{
       const sample = [
         '건축법 제22조, 같은법 제23조, 동법시행령 제9조의2 제3항을 적용한다.',
@@ -578,6 +622,18 @@
       byId('input').value = sample;
       handleRun();
       byId('testOutput').innerHTML = '샘플 본문으로 실행했습니다. (JSON 우선, 프록시 폴백 활성)';
+    });
+
+    // 추가 테스트: 시행규칙/의조/목 처리, 띄어쓰기/오타 보정
+    byId('runTests2')?.addEventListener('click', ()=>{
+      const sample2 = [
+        '도로교통법 시행규칙 제6조의2 제1항 제3호 가목을 따른다.',
+        '같은 법 제8조 및 같은 법 시행령 제8조의2를 병기한다.',
+        '영유아교육법 제2조 (유사명 자동보정 테스트 포함)'
+      ].join(' ');
+      byId('input').value = sample2;
+      handleRun();
+      byId('testOutput').innerHTML = '추가 테스트 본문으로 실행했습니다. (시행규칙/의조/목 처리 포함)';
     });
   });
 })();
