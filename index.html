@@ -549,35 +549,24 @@
       let lawName = (nameInParen.match(/\((.+)\)/)||[])[1] || nameInParen || '';
       lawName = refineLawName(lawName);
       if(!lawName) return;
-
-      const rawB = (bEl.textContent || '').trim();
+  
+      const rawB = (bEl.textContent || '').replace(/\u00A0/g,' ').trim(); // NBSP 정리
       let jo=null, joi=null, hang=null, ho=null;
-
-      // 1) <b> 텍스트만 파싱 (이미 「…법」 포함 케이스)
-      let m = EXPL_RE.exec(rawB);
-      EXPL_RE.lastIndex = 0;
-
-      // 2) 실패 시 법명+텍스트 조합
-      if(!m){
-        const combo2 = `${lawName} ${rawB}`;
-        m = EXPL_RE.exec(combo2);
-        EXPL_RE.lastIndex = 0;
-      }
-
-      if(m){
-        jo  = m[2] || null;
-        joi = m[3] || null;
-        hang= m[4] || null;
-        ho  = m[5] || null;
-      }
-
+  
+      // 1) <b> 텍스트만 파싱
+      let m = EXPL_RE.exec(rawB); EXPL_RE.lastIndex = 0;
+      // 2) 실패 시 법명+텍스트로 재시도
+      if(!m){ const combo2 = `${lawName} ${rawB}`; m = EXPL_RE.exec(combo2); EXPL_RE.lastIndex = 0; }
+  
+      if(m){ jo = m[2]||null; joi = m[3]||null; hang = m[4]||null; ho = m[5]||null; }
       if(!jo){
         __tipShow(`${lawName} · ${rawB}`, `<div class="err">조 번호를 해석하지 못했습니다.</div>`, ev.clientX, ev.clientY);
         return;
       }
-
+  
       __tipShow(`${lawName} · ${rawB}`, '<span class="loading">불러오는 중…</span>', ev.clientX, ev.clientY);
-
+  
+      // ID 조회(캐시)
       let lawId = __lawIdCache[lawName];
       if(!lawId){
         const row = await searchLawRow(OC, lawName);
@@ -588,8 +577,14 @@
         __tipShow(`${lawName} · ${rawB}`, `<div class="err">법령ID를 찾지 못했습니다. <a target="_blank" rel="noopener" href="${publicSearchURL(lawName)}">국가법령정보 검색</a></div>`, ev.clientX, ev.clientY);
         return;
       }
-
-      const item={ jo:String(jo).padStart(6,'0'), hang:hang?String(hang).padStart(6,'0'):null, ho:ho?String(ho).padStart(6,'0'):null, joi:joi?String(joi).padStart(6,'0'):null };
+  
+      // 1차: lawjosub 시도
+      const item = {
+        jo:String(jo).padStart(6,'0'),
+        hang:hang?String(hang).padStart(6,'0'):null,
+        ho:ho?String(ho).padStart(6,'0'):null,
+        joi:joi?String(joi).padStart(6,'0'):null
+      };
       const urls=buildLawJoSubURLs(OC, lawId, item);
       const tryList=[];
       const noHangHasHo=(!item.hang && !!item.ho);
@@ -597,16 +592,46 @@
       if(urls.joHangHo){ if(urls.joHangHo.pad) tryList.push(urls.joHangHo.pad); if(urls.joHangHo.raw) tryList.push(urls.joHangHo.raw); }
       if(urls.joHo){ if(urls.joHo.pad) tryList.push(urls.joHo.pad); if(urls.joHo.raw) tryList.push(urls.joHo.raw); }
       if(urls.joOnly){ if(urls.joOnly.pad) tryList.push(urls.joOnly.pad); if(urls.joOnly.raw) tryList.push(urls.joOnly.raw); }
-
-      let html=null;
+  
+      let html=null, authErr=false;
       for(const u of tryList.filter(Boolean)){
-        try{ const t=(await fetchText(u)).text; if(t && t.length>60){ html=t; break; } }catch(e){}
+        try{
+          const r=(await fetchText(u)).text||'';
+          if(/사용자인증에 실패하였습니다/.test(r)) { authErr=true; break; }
+          if(r.length>20){ html=r; break; } // 임계치 완화
+        }catch(e){}
       }
+  
+      // 2차 폴백: law 전체 본문에서 “제n조(의m)” 스니펫 추출
+      if(!html && !authErr){
+        try{
+          const fullURL = buildLawFullHTMLURL(OC, lawId);
+          const full = (await fetchText(fullURL)).text || '';
+          if(full && full.length>200){
+            const key = `제${parseInt(jo,10)}조` + (joi?`의${parseInt(joi,10)}`:'');
+            // 해당 키를 중심으로 앞뒤 1200자 스니펫
+            const idx = full.indexOf(key);
+            if(idx>=0){
+              const from = Math.max(0, idx - 600);
+              const to   = Math.min(full.length, idx + 1200);
+              html = `<div class="hdr"></div><div class="cnt"></div>`; // dummy to keep structure
+              html = full.substring(from, to);
+            }
+          }
+        }catch(e){}
+      }
+  
+      if(authErr){
+        __tipShow(`${lawName} · ${rawB}`, `<div class="err">DRF 인증 오류(OC 만료/오입력 가능).</div>`, ev.clientX, ev.clientY);
+        return;
+      }
+  
       __tipShow(`${lawName} · ${rawB}`, html || '<div class="err">조문을 불러오지 못했습니다.</div>', ev.clientX, ev.clientY);
     }catch(e){
       __tipShow('오류', `<div class="err">${e+''}</div>`, ev.clientX, ev.clientY);
     }
   }
+
   document.addEventListener('mousemove', (e)=>{ if(__tip.style.display==='block') __tipPos(e.clientX,e.clientY); });
   document.addEventListener('mouseover', (e)=>{ const b=e.target.closest('.item b'); if(!b) return; __hoverFetchAndShow(b, e); });
   document.addEventListener('mouseout', (e)=>{ if(e.target.closest('.item b')) __tipHide(); });
