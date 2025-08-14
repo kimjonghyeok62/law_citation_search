@@ -219,46 +219,6 @@
   const CTX_WORD = '(?:같은\\s*법|이\\s*법|동\\s*법|같은\\s*법률|이\\s*법률|동\\s*법률|같은\\s*법\\s*시행령|동\\s*법\\s*시행령|이\\s*영|동\\s*시행령|같은\\s*법\\s*시행규칙|동\\s*법\\s*시행규칙|이\\s*규칙|동\\s*규칙)';
   const CTX_RE   = new RegExp(`(${CTX_WORD})\\s*${JO}${HANG}${HO}${MOKRE}`, 'g');
 
-  // …(정규식 선언들 아래에 추가)…
-  
-  /** 보조: 텍스트에서 조/의/항/호/목 파싱 (따옴표/공백변형/단독조문까지) */
-  function parseCitationParts(text, lawName){
-    if(!text) return null;
-    let s = String(text)
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/\u00A0/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  
-    // 1) 「…」 표기: 「사립학교법」 제43조 …
-    QUOTED_RE.lastIndex = 0;
-    let mq = QUOTED_RE.exec(s);
-    if (mq) {
-      return { jo: mq[2], joi: mq[3]||null, hang: mq[4]||null, ho: mq[5]||null, mok: mq[6]||null };
-    }
-  
-    // 2) 명시적 법명 + 조문: 사립학교법 제43조 …
-    EXPL_RE.lastIndex = 0;
-    let me = EXPL_RE.exec(s);
-    if (me) {
-      return { jo: me[2], joi: me[3]||null, hang: me[4]||null, ho: me[5]||null, mok: (me[6]&&(me[6].match(/[가-하]/)||[])[0])||null };
-    }
-  
-    // 3) 조문만 단독: 제43조(의2) 제1항 제3호 가목 …
-    const JO_ONLY_RE = new RegExp(`${JO}${HANG}${HO}${MOKRE}`);
-    let mj = JO_ONLY_RE.exec(s);
-    if (mj) {
-      return { jo: mj[1], joi: mj[2]||null, hang: mj[3]||null, ho: mj[4]||null, mok: (mj[5]&&(mj[5].match(/[가-하]/)||[])[0])||null };
-    }
-  
-    // 4) lawName과 합쳐 재시도 (b 태그 안에 '제43조'만 있는 경우)
-    if (lawName) {
-    const parsed = parseCitationParts(rawB, lawName);
-    if (parsed) { ({ jo, joi, hang, ho, mok } = parsed); }
-    }
-    return null;
-  }
-
   /** ========== 검색 보조: generateAlternatives ========== **/
   // 검색 쿼리 유사변형(오타/띄어쓰기/용어 혼동) 생성
   function generateAlternatives(q){
@@ -363,6 +323,32 @@
 
   function buildLawFullHTMLURL(id){
     return buildURL('/lawService.do', { OC, target:'law', type:'HTML', ID:id });
+  }
+
+  // 조문 직접 이동 URL 생성 (lawjosub HTML)
+  function buildLawArticleURL(id,{jo,joi,hang,ho,mok}){
+    const params = {
+      OC,
+      target:'lawjosub',
+      type:'HTML',
+      ID:id,
+      JO: joTo6(jo, joi)
+    };
+    if(hang) params.HANG = pad(hang,6);
+    if(ho)   params.HO   = pad(ho,6);
+    if(mok)  params.MOK  = mok;
+    return buildURL('/lawService.do', params);
+  }
+
+  // 미리보기 모달 열기
+  function openPreviewModal(title, html){
+    const safe = sanitizeForEmbed(html);
+    byId('viewerTitle').textContent = title || '';
+    byId('viewerBody').innerHTML = safe || '<div class="small">내용이 없습니다.</div>';
+    const v = byId('viewer');
+    v.classList.add('on');
+    v.setAttribute('aria-hidden','false');
+  });
   }
 
   /** ========== JSON 기반 조문 조회 & 렌더 ========== **/
@@ -503,8 +489,9 @@
   function addResultItem(it, lawId, lsiSeq){
     const resUl = byId('resList');
     const li = document.createElement('li'); li.className='item';
-    li.innerHTML = `<div><b>${it.raw}</b> <span class="small">(${it.disp||it.lawName})</span></div>
-      <div class="small">법령ID: ${lawId}${lsiSeq ? ` · 일련번호(lsiSeq): ${lsiSeq}`:''}</div>`;
+    li.innerHTML = `<div><b class="preview-hook">${it.raw}</b> <span class="small">(${it.disp||it.lawName})</span></div>
+      <div class="small">법령ID: ${lawId}${lsiSeq ? ` · 일련번호(lsiSeq): ${lsiSeq}`:''}</div>
+      <div class="small actions">• <a class="open-article" target="_blank" rel="noopener">조문 바로가기</a> · <a class="open-full" target="_blank" rel="noopener">전체 본문</a> · <button class="preview-btn" style="background:#445b9c;border:0;border-radius:8px;padding:2px 8px;color:#fff;cursor:pointer">미리보기</button></div>`;
     resUl.appendChild(li); return li;
   }
 
@@ -532,7 +519,7 @@
         const publicDirect = publicLawURL(it.disp||it.lawName);
         const drfList = buildURL('/lawSearch.do', { OC, target:'law', type:'HTML', query:it.disp||it.lawName, display:10 });
         const li = document.createElement('li'); li.className='item';
-        li.innerHTML = `<div><b>${it.raw||it.disp||it.lawName}</b> <span class="small">(${it.disp||it.lawName})</span></div>
+        li.innerHTML = `<div><b class="preview-hook">${it.raw||it.disp||it.lawName}</b> <span class="small">(${it.disp||it.lawName})</span></div>
           <div class="small">법령ID 검색 실패. 퍼블릭 링크를 제공합니다.</div>
           <div>• 법령 페이지: <a target="_blank" rel="noopener" href="${publicDirect}">${it.disp||it.lawName}</a></div>
           <div class="small">(참고) DRF 목록: <a target="_blank" rel="noopener" href="${drfList}">lawSearch</a></div>`;
@@ -548,6 +535,13 @@
       li.dataset.lawid = lawId;
       li.dataset.lawname = (it.disp||it.lawName)||'';
       li.dataset.jo = it.jo||''; li.dataset.joi = it.joi||''; li.dataset.hang = it.hang||''; li.dataset.ho = it.ho||''; li.dataset.mok = it.mok||'';
+
+      // 링크 설정
+      const articleURL = it.kind==='article' ? buildLawArticleURL(lawId, {jo:it.jo, joi:it.joi, hang:it.hang, ho:it.ho, mok:it.mok}) : buildLawFullHTMLURL(lawId);
+      const openArticle = li.querySelector('.open-article');
+      const openFull = li.querySelector('.open-full');
+      if(openArticle) openArticle.href = articleURL;
+      if(openFull) openFull.href = buildLawFullHTMLURL(lawId);
 
       if(it.kind==='article'){
         (async ()=>{
@@ -591,6 +585,25 @@
       }
     }
   }
+          }
+
+          // 3) 퍼블릭 페이지에서 스니펫 추출
+          if(!html){
+            const sn = await fetchPublicLawSnippet(it.disp||it.lawName, parseInt(it.jo||'0',10), it.joi?parseInt(it.joi,10):null);
+            if(sn) html = sn;
+          }
+
+          if(html){ const box = document.createElement('div'); box.innerHTML = sanitizeForEmbed(html); li.appendChild(box); }
+          else { const warn=document.createElement('div'); warn.className='small'; warn.textContent='조문을 불러오지 못했습니다.'; li.appendChild(warn); }
+        })();
+      }else{
+        const fullURL = buildLawFullHTMLURL(lawId);
+        const a = document.createElement('div');
+        a.innerHTML = `• 전체 본문: <a target="_blank" rel="noopener" href="${fullURL}">law(HTML)</a>`;
+        li.appendChild(a);
+      }
+    }
+  }
 
   /** ========== 툴팁 ========== **/
   const tip = (()=>{ const el=document.createElement('div'); el.className='tooltip'; el.innerHTML='<div class="hdr"></div><div class="cnt"><span class="loading">불러오는 중…</span></div>'; document.body.appendChild(el); return el; })();
@@ -599,8 +612,35 @@
   function tipHide(){ tip.style.display='none'; }
 
   document.addEventListener('mousemove', (e)=>{ if(tip.style.display==='block') tipPos(e.clientX,e.clientY); });
-  document.addEventListener('mouseover', (e)=>{ const b=e.target.closest('.item b'); if(!b) return; hoverFetchAndShow(b, e); });
-  document.addEventListener('mouseout', (e)=>{ if(e.target.closest('.item b')) tipHide(); });
+  document.addEventListener('mouseover', (e)=>{ const b=e.target.closest('.item .preview-hook'); if(!b) return; hoverFetchAndShow(b, e); });
+  document.addEventListener('mouseout', (e)=>{ if(e.target.closest('.item .preview-hook')) tipHide(); });
+
+  // 미리보기 버튼 클릭 시 모달로 표시 (툴팁이 불안정한 환경 대비)
+  byId('resBox').addEventListener('click', async (e)=>{
+    const btn = e.target.closest('.preview-btn');
+    if(!btn) return;
+    const host = btn.closest('.item'); if(!host) return;
+    const lawId = host.dataset.lawid; const lawName = host.dataset.lawname;
+    const jo = host.dataset.jo||null; const joi = host.dataset.joi||null; const hang = host.dataset.hang||null; const ho = host.dataset.ho||null; const mok = host.dataset.mok||null;
+
+    openPreviewModal(`${lawName} · 제${jo}${joi?`의${joi}`:''}조 미리보기`, '<span class="loading">불러오는 중…</span>');
+    let html = '';
+    const json = await fetchArticleJSON(lawId, { jo, joi, hang, ho, mok });
+    if(json){ html = renderFromJSON(json, `${lawName} · 제${jo}${joi?`의${joi}`:''}조 (JSON)`); }
+    if(!html){
+      const full = await fetchTextDirectOrProxy(buildLawFullHTMLURL(lawId));
+      if(full && full.length>200 && !isFailPage(full)){
+        const key = `제${parseInt(jo||'0',10)}조` + (joi?`의${parseInt(joi,10)}`:'');
+        const idx = full.indexOf(key);
+        if(idx>=0){ html = wrapRender(`${lawName} · 제${jo}${joi?`의${joi}`:''}조 (HTML 폴백)`, full.substring(Math.max(0, idx-400), Math.min(full.length, idx+1600))); }
+      }
+    }
+    if(!html){
+      const sn = await fetchPublicLawSnippet(lawName, parseInt(jo||'0',10), joi?parseInt(joi,10):null);
+      if(sn) html = sn;
+    }
+    openPreviewModal(`${lawName} · 제${jo}${joi?`의${joi}`:''}조`, html || '<div class="small">조문을 불러오지 못했습니다.</div>');
+  });
 
   const __lawIdCache = Object.create(null);
 
@@ -618,12 +658,7 @@
       let m = EXPL_RE.exec(rawB); EXPL_RE.lastIndex = 0;
       if(!m){ const combo2 = `${lawName} ${rawB}`; m = EXPL_RE.exec(combo2); EXPL_RE.lastIndex = 0; }
       if(m){ jo = m[2]||null; joi = m[3]||null; hang = m[4]||null; ho = m[5]||null; mok = (m[6] && (m[6].match(/[가-하]/)||[])[0]) || null; }
-      if(!jo){
-        tipShow(`${lawName} · ${rawB}`,
-          `<div class="err">조 번호를 해석하지 못했습니다. (입력: ${rawB})</div>`,
-          ev.clientX, ev.clientY);
-        return;
-      }
+      if(!jo){ tipShow(`${lawName} · ${rawB}`, `<div class="err">조 번호를 해석하지 못했습니다.</div>`, ev.clientX, ev.clientY); return; }
 
       tipShow(`${lawName} · ${rawB}`, '<span class="loading">불러오는 중…</span>', ev.clientX, ev.clientY);
 
