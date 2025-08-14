@@ -348,7 +348,6 @@
     const v = byId('viewer');
     v.classList.add('on');
     v.setAttribute('aria-hidden','false');
-  });
   }
 
   /** ========== JSON 기반 조문 조회 & 렌더 ========== **/
@@ -496,10 +495,11 @@
   }
 
   async function handleRun(){
-    const text    = byId('input').value;
+    const text = byId('input').value;
     const foundUl = byId('foundList');
-    const resUl   = byId('resList');
-    foundUl.innerHTML = ''; resUl.innerHTML = '';
+    const resUl = byId('resList');
+    foundUl.innerHTML = '';
+    resUl.innerHTML = '';
     lastExplicitBase = { 법:null, 영:null, 규:null };
 
     if(!text.trim()){ alert('본문을 입력해 주세요.'); return; }
@@ -511,7 +511,8 @@
       foundUl.innerHTML = '<li>특정 가능한 법조문 인용을 찾지 못했습니다.</li>';
       return;
     }
-    items.forEach(it=> addFoundItem(foundUl, it));
+
+    items.forEach(it => addFoundItem(foundUl, it));
 
     for(const it of items){
       const row = await searchLawRow(it.disp || it.lawName);
@@ -534,7 +535,11 @@
       li.dataset.kind = it.kind;
       li.dataset.lawid = lawId;
       li.dataset.lawname = (it.disp||it.lawName)||'';
-      li.dataset.jo = it.jo||''; li.dataset.joi = it.joi||''; li.dataset.hang = it.hang||''; li.dataset.ho = it.ho||''; li.dataset.mok = it.mok||'';
+      li.dataset.jo = it.jo||'';
+      li.dataset.joi = it.joi||'';
+      li.dataset.hang = it.hang||'';
+      li.dataset.ho = it.ho||'';
+      li.dataset.mok = it.mok||'';
 
       // 링크 설정
       const articleURL = it.kind==='article' ? buildLawArticleURL(lawId, {jo:it.jo, joi:it.joi, hang:it.hang, ho:it.ho, mok:it.mok}) : buildLawFullHTMLURL(lawId);
@@ -566,25 +571,6 @@
                 html = wrapRender(`${it.disp||it.lawName} · ${it.raw} (HTML 폴백)`, sn);
               }
             }
-          }
-
-          // 3) 퍼블릭 페이지에서 스니펫 추출
-          if(!html){
-            const sn = await fetchPublicLawSnippet(it.disp||it.lawName, parseInt(it.jo||'0',10), it.joi?parseInt(it.joi,10):null);
-            if(sn) html = sn;
-          }
-
-          if(html){ const box = document.createElement('div'); box.innerHTML = sanitizeForEmbed(html); li.appendChild(box); }
-          else { const warn=document.createElement('div'); warn.className='small'; warn.textContent='조문을 불러오지 못했습니다.'; li.appendChild(warn); }
-        })();
-      }else{
-        const fullURL = buildLawFullHTMLURL(lawId);
-        const a = document.createElement('div');
-        a.innerHTML = `• 전체 본문: <a target="_blank" rel="noopener" href="${fullURL}">law(HTML)</a>`;
-        li.appendChild(a);
-      }
-    }
-  }
           }
 
           // 3) 퍼블릭 페이지에서 스니펫 추출
