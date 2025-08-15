@@ -116,3 +116,20 @@ function bind(){
 }
 
 document.addEventListener('DOMContentLoaded', bind);
+
++// 화면 표시용: 같은법/이법/동법(시행령/시행규칙) → 실제 법명으로 치환
++function humanizeRaw(raw, disp){
++  if(!raw || !disp) return raw || '';
++  return raw
++    .replace(/^(같은\s*법|이\s*법|동\s*법)\s*/,'')                 // 앞부분 토큰 제거
++    .replace(/^동\s*법\s*시행령\s*/,'')                            // "동법시행령 " 삭제
++    .replace(/^같은\s*법\s*시행령\s*/,'')
++    .replace(/^이\s*영\s*/,'')                                     // "이 영"도 처리
++    .replace(/^동\s*시행령\s*/,'')
++    .replace(/^동\s*법\s*시행규칙\s*/,'')
++    .replace(/^같은\s*법\s*시행규칙\s*/,'')
++    .replace(/^이\s*규칙\s*/,'')
++    .replace(/^동\s*규칙\s*/,'')
++    // 앞에 실제 법명을 붙여서 표시
++    .replace(/^/, disp + ' ');
++}
