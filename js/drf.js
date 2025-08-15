@@ -68,14 +68,15 @@ export async function fetchArticleJSON(id,{jo,joi,hang,ho,mok}, proxyBase){
 
 export function canonName(s){ return (s||'').replace(/[\s"“”'‘’\[\]\(\)「」]/g,'').replace(/[·ㆍ]/g,''); }
 export function displayName(s){ return (s||'').replace(/[\"“”'‘’\[\]\(\)「」]/g,'').trim(); }
-// 띄어쓰기 유무와 상관없이 '시행령/시행규칙' 보존
+
+// 띄어쓰기 유무와 상관없이 '시행령/시행규칙' 보존 + 표준화
 export function refineLawName(name){
   let s = (name||'').trim();
   if(!s) return s;
   // 불필요 선행어 제거
   s = s.replace(/^(?:까지|및|또는|등|관련|관한|따른|에\s*따른|에\s*의한|의)\s+/, '');
 
-  // 1) 붙여쓴 케이스까지 처리: 건축법시행령 / 건축법 시행령 / 건축법시행규칙 …
+  // 1) 붙여쓴 케이스까지 처리: 건축법시행령 / 건축법시행규칙 (+ 띄어쓴 변형)
   const m = s.match(/^(.*?법(?:률)?)(?:\s*)?(시행령|시행규칙)$/);
   if (m) return (m[1] + ' ' + m[2]).trim(); // "건축법시행령" → "건축법 시행령"
 
@@ -92,7 +93,6 @@ export function refineLawName(name){
   }
   return s;
 }
-
 
 function generateAlternatives(q){
   const s = displayName(q||'').replace(/\s+/g,'').trim();
