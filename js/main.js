@@ -8,6 +8,27 @@ import { renderFound, appendResult, openPreviewModal, closePreviewModal, sanitiz
 const $ = id => document.getElementById(id);
 const getProxyBase = () => ($('proxy')?.value?.trim() || 'https://law-proxy.hyok96.workers.dev/?url=');
 
+// 화면 표시용: 같은법/이법/동법(시행령/시행규칙) → 실제 법명으로 치환
+// * 원문이 이미 완전한 법명인 경우에는 그대로 둡니다(중복 방지).
+function humanizeRaw(raw, disp){
+  if(!raw || !disp) return raw || '';
+  const s = raw.trim();
+
+  // 시작 토큰이 있을 때만 치환 (없으면 그대로 반환)
+  const m = s.match(
+    /^(?:(같은\s*법|이\s*법|동\s*법)\s*(시행령|시행규칙)?|이\s*(영|규칙)|동\s*(시행령|규칙))\s*/
+  );
+  if(!m) return raw;
+
+  // 시행령/시행규칙 꼬리 보존
+  let suffix = m[2] || m[3] || m[4] || '';
+  if(suffix === '영') suffix = '시행령';
+  if(suffix === '규칙') suffix = '시행규칙';
+
+  const lawPart = disp + (suffix ? ' ' + suffix : '');
+  return lawPart + ' ' + s.slice(m[0].length);
+}
+
 async function handleRun(){
   const text = $('input').value||'';
   const foundUl = $('foundList');
@@ -32,7 +53,16 @@ async function handleRun(){
 
     const lawId = row.법령ID || row.id || '';
     const lsiSeq = row.법령일련번호 || '';
-    const li = appendResult(resUl, {raw:it.raw, disp:(it.disp||it.lawName), lawId, lsiSeq, jo:it.jo, joi:it.joi, hang:it.hang, ho:it.ho, mok:it.mok});
+
+    // 화면표시용 raw 치환
+    const displayRaw = humanizeRaw(it.raw, (it.disp||it.lawName));
+
+    const li = appendResult(resUl, {
+      raw: displayRaw,
+      disp: (it.disp||it.lawName),
+      lawId, lsiSeq,
+      jo: it.jo, joi: it.joi, hang: it.hang, ho: it.ho, mok: it.mok
+    });
 
     const openArticle = li.querySelector('.open-article');
     const openFull = li.querySelector('.open-full');
@@ -67,7 +97,7 @@ async function handleRun(){
               }
             }
           }
-          html = `<div class="render"><div class="hdr"><div>${(it.disp||it.lawName)} · ${it.raw} (JSON)</div></div><div class="body">${body.join('')}</div></div>`;
+          html = `<div class="render"><div class="hdr"><div>${(it.disp||it.lawName)} · ${displayRaw} (JSON)</div></div><div class="body">${body.join('')}</div></div>`;
         }catch{}
       }
       if(!html){
@@ -75,15 +105,25 @@ async function handleRun(){
         if(full && full.length>200 && !isFailPage(full)){
           const key = `제${parseInt(it.jo||'0',10)}조` + (it.joi?`의${parseInt(it.joi,10)}`:'');
           const idx = full.indexOf(key);
-          if(idx>=0){ html = `<div class="render"><div class="hdr"><div>${(it.disp||it.lawName)} · ${it.raw} (HTML 폴백)</div></div><div class="body">${full.substring(Math.max(0, idx-400), Math.min(full.length, idx+1600))}</div></div>`; }
+          if(idx>=0){
+            html = `<div class="render"><div class="hdr"><div>${(it.disp||it.lawName)} · ${displayRaw} (HTML 폴백)</div></div><div class="body">${full.substring(Math.max(0, idx-400), Math.min(full.length, idx+1600))}</div></div>`;
+          }
         }
       }
       if(!html){
         const sn = await fetchPublicLawSnippet((it.disp||it.lawName), parseInt(it.jo||'0',10), it.joi?parseInt(it.joi,10):null, getProxyBase());
         if(sn) html = sn;
       }
-      if(html){ const box = document.createElement('div'); box.innerHTML = sanitizeForEmbed(html); li.appendChild(box); }
-      else { const warn=document.createElement('div'); warn.className='small'; warn.textContent='조문을 불러오지 못했습니다.'; li.appendChild(warn); }
+      if(html){
+        const box = document.createElement('div');
+        box.innerHTML = sanitizeForEmbed(html);
+        li.appendChild(box);
+      } else {
+        const warn=document.createElement('div');
+        warn.className='small';
+        warn.textContent='조문을 불러오지 못했습니다.';
+        li.appendChild(warn);
+      }
     })();
   }
 }
