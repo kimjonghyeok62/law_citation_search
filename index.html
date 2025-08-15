@@ -72,3 +72,47 @@ Repo structure (create these files 1:1 in your repo)
 <script type="module" src="./js/main.js"></script>
 </body>
 </html>
+
+
+/* ============ css/style.css ============ */
+:root{--bg:#0b1020;--panel:#11172c;--muted:#8492b5;--line:#1f2a49;--accent:#5b8cff;--txt:#e6ecff}
+html,body{height:100%}
+body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;background:var(--bg);color:var(--txt)}
+.wrap{max-width:1200px;margin:0 auto;padding:24px}
+h1{font-size:1.35rem;margin:0 0 8px}
+.hint{color:var(--muted);font-size:.95rem;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+textarea{width:100%;min-height:210px;padding:12px;border-radius:12px;border:1px solid var(--line);background:#0f1731;color:#e6ecff}
+.card{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0}
+input[type="text"]{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0f1731;color:#e6ecff;min-width:260px}
+button{padding:10px 14px;border:0;border-radius:10px;background:var(--accent);color:#fff;cursor:pointer}
+button.secondary{background:#445b9c}
+button:disabled{opacity:.6;cursor:not-allowed}
+.tag{display:inline-flex;gap:6px;align-items:center;padding:2px 8px;border:1px solid var(--line);background:#0f1731;border-radius:999px;color:#c9d6ff;font-size:.8rem}
+.result h2{margin:0 0 8px}
+ol{margin:0;padding-left:20px}
+.k{color:#9fb4ff}
+.small{font-size:.9rem;color:#9aa8ce}
+.item{padding:10px;border-top:1px dashed var(--line)}
+.monos{font-family:ui-monospace,Menlo,Consolas,monospace;background:#0f1731;border-radius:6px;padding:0 6px}
+.render{margin-top:8px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.render .hdr{display:flex;justify-content:space-between;align-items:center;background:#0f1731;padding:8px 10px;border-bottom:1px solid var(--line)}
+.render .body{padding:10px;max-height:360px;overflow:auto;background:#0c1330}
+a{color:#9ec1ff}
+.tests{margin-top:18px}
+.pass{color:#22c55e}
+.fail{color:#ef4444}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#0f1731;border:1px solid var(--line);color:#c9d6ff;font-size:.8rem}
+.viewer{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+.viewer.on{display:flex}
+.viewer .box{width:min(1100px,96vw);height:min(80vh,900px);background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.viewer .hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#0f1731;border-bottom:1px solid var(--line)}
+.viewer .body{flex:1;overflow:auto;background:#0c1330;padding:12px}
+.viewer .close{background:#3b4977}
+mark.hl{background:#fde047;color:#111;padding:0 .2em;border-radius:3px}
+.tooltip{position:fixed;max-width:560px;max-height:360px;overflow:auto;background:#0f1731;color:#e6ecff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.45);padding:10px;z-index:60;display:none}
+.tooltip .hdr{font-weight:600;margin-bottom:6px;color:#cfe0ff}
+.tooltip .cnt{font-size:.92rem;line-height:1.45}
+.tooltip .loading{color:#9aa8ce}
+.tooltip .err{color:#ef4444}
