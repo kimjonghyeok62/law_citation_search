@@ -133,3 +133,7 @@ document.addEventListener('DOMContentLoaded', bind);
 +    // 앞에 실제 법명을 붙여서 표시
 +    .replace(/^/, disp + ' ');
 +}
+
+- const li = appendResult(resUl, {raw:it.raw, disp:(it.disp||it.lawName), lawId, lsiSeq, jo:it.jo, joi:it.joi, hang:it.hang, ho:it.ho, mok:it.mok});
++ const displayRaw = humanizeRaw(it.raw, (it.disp||it.lawName));
++ const li = appendResult(resUl, {raw:displayRaw, disp:(it.disp||it.lawName), lawId, lsiSeq, jo:it.jo, joi:it.joi, hang:it.hang, ho:it.ho, mok:it.mok});
