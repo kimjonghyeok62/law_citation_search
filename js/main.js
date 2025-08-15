@@ -2,7 +2,8 @@ import {
   searchLawRow, fetchArticleJSON, buildLawFullHTMLURL, buildLawArticleURL,
   fetchTextDirectOrProxy, isFailPage, fetchPublicLawSnippet
 } from './drf.js';
-import { extractCitationsAdvanced, EXPL_RE } from './extract.js';
+// EXPL_RE는 사용하지 않으므로 제거
+import { extractCitationsAdvanced } from './extract.js';
 import { renderFound, appendResult, openPreviewModal, closePreviewModal, sanitizeForEmbed } from './ui.js';
 
 const $ = id => document.getElementById(id);
@@ -54,8 +55,8 @@ async function handleRun(){
     const lawId = row.법령ID || row.id || '';
     const lsiSeq = row.법령일련번호 || '';
 
-    // 화면표시용 raw 치환
-    const displayRaw = humanizeRaw(it.raw, (it.disp||it.lawName));
+    // ✅ 화면표시용 raw: 데이터 단계에서 확정된 rawResolved가 있으면 우선 사용
+    const displayRaw = it.rawResolved ?? humanizeRaw(it.raw, (it.disp || it.lawName));
 
     const li = appendResult(resUl, {
       raw: displayRaw,
