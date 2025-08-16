@@ -1,5 +1,4 @@
 // ============ js/extract.js ============
-// 인용 추출/정규식/컨텍스트
 const LAW_BASE = `[가-힣A-Za-z0-9·ㆍ\\s]+?(?:법|법률)`;
 const LAW_EO   = `(?:시행령|시행규칙)`;
 const LAW_FULL = `(${LAW_BASE}(?:\\s*${LAW_EO})?)`;
@@ -27,17 +26,19 @@ export function extractCitationsAdvanced(text){
   let last = { 법:null, 영:null, 규:null };
   const cites = []; const seen = new Set();
 
-  const refineLawName = s => {
+  const refineLaw = s => {
     let t = (s||'').trim();
     if(!t) return t;
     t = t.replace(/^(?:까지|및|또는|등|관련|관한|따른|에\s*따른|에\s*의한|의)\s+/, '');
+    const m = t.match(/^(.*?법(?:률)?)(?:\s*)?(시행령|시행규칙)$/);
+    if (m) return (m[1] + ' ' + m[2]).trim();
     const toks = t.split(/\s+/); let i=-1;
     for(let k=toks.length-1;k>=0;k--){ if(/[법]$/.test(toks[k])){ i=k; break; } }
     if(i>=0){ if(toks[i+1] && /^(시행령|시행규칙)$/.test(toks[i+1])) return (toks[i]+' '+toks[i+1]).trim(); return toks[i]; }
     return t;
   };
   const displayName = s => (s||'').replace(/[\"“”'‘’\[\]\(\)「」]/g,'').trim();
-  const canonName = s => (s||'').replace(/[\s"“”'‘’\[\]\(\)「」]/g,'').replace(/[·ㆍ]/g,'');
+  const canonName = s => (s||'').replace(/[\s\"“”'‘’\[\]\(\)「」]/g,'').replace(/[·ㆍ]/g,'');
 
   function updateBaseFromName(disp){
     if(/시행령$/.test(disp)){ last.영 = disp; last.법 = disp.replace(/시행령$/, ''); last.규 = last.법 + '시행규칙'; }
@@ -64,12 +65,12 @@ export function extractCitationsAdvanced(text){
     while((m0 = LAW_NAME_ONLY_RE.exec(t))){
       const rawNameText = displayName(m0[1]);
       if(isContextualName(rawNameText)) continue;
-      const ref = refineLawName(rawNameText); if(!ref) continue; if(isContextualName(ref)) continue; updateBaseFromName(ref);
+      const ref = refineLaw(rawNameText); if(!ref) continue; if(isContextualName(ref)) continue; updateBaseFromName(ref);
     }
 
     let q; while((q = QUOTED_RE.exec(t))){
       const [raw, rawName, joNum, joUi, hang, ho, mokChar] = q;
-      const disp = refineLawName(displayName(rawName));
+      const disp = refineLaw(displayName(rawName));
       pushUnique({ raw, lawName: canonName(disp), disp, jo: joNum, joi: joUi||null, hang: hang||null, ho: ho||null, mok: mokChar||null, kind:'article' });
       updateBaseFromName(disp);
     }
@@ -78,7 +79,7 @@ export function extractCitationsAdvanced(text){
       const [raw, rawName, joNum, joUi, hang, ho, mokAll] = m;
       const rawNameText = displayName(rawName);
       if(isContextualName(rawNameText)) continue;
-      const disp = refineLawName(rawNameText); if(!disp) continue; if(isContextualName(disp)) continue;
+      const disp = refineLaw(rawNameText); if(!disp) continue; if(isContextualName(disp)) continue;
       pushUnique({ raw, lawName: canonName(disp), disp, jo: joNum||null, joi: joUi||null, hang: hang||null, ho: ho||null, mok: mokAll?mokAll.match(/[가-하]/)?.[0]||null:null, kind:'article' });
       updateBaseFromName(disp);
     }
@@ -86,7 +87,7 @@ export function extractCitationsAdvanced(text){
     while((m = CTX_RE.exec(t))){
       const [raw, ctxWord, joNum, joUi, hang, ho, mokAll] = m;
       const resolved = resolveCtx(ctxWord); if(!resolved) continue;
-      const disp = refineLawName(displayName(resolved));
+      const disp = refineLaw(displayName(resolved));
       pushUnique({ raw, lawName: canonName(disp), disp, jo: joNum||null, joi: joUi||null, hang: hang||null, ho: ho||null, mok: mokAll?mokAll.match(/[가-하]/)?.[0]||null:null, kind:'article' });
     }
   }
