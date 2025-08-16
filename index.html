@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>법조문 자동 추출·검색 (정확도 개선 v2 · 중요도 하이라이트)</title>
+<title>법조문 자동 추출·검색 (정확도 개선 v2)</title>
 <style>
   :root{--bg:#0b1020; --panel:#0f152b; --muted:#8ea0c7; --line:#1c2748; --accent:#78a6ff; --accent-2:#9ec1ff; --txt:#eaf1ff; --txt-muted:#aab9dd; --radius:14px; --shadow:0 10px 28px rgba(0,0,0,.32)}
   @media (prefers-color-scheme: light){ :root{ --bg:#f5f7ff; --panel:#fff; --muted:#596180; --line:#e6eaff; --accent:#2e5cff; --accent-2:#4c78ff; --txt:#0c1330; --txt-muted:#5e6a8a; --shadow:0 8px 20px rgba(15,23,52,.08)} }
@@ -95,17 +95,11 @@
   .article-body .mok{margin-left:36px}
   .article-body b{color:var(--accent-2)}
 
-  /* ▼ 번호 숨김 (항/호/목 라벨) */
+  /* ▼ 추가: 미리보기에서 항/호/목 번호 요소 자체를 숨김 */
   .article-body .hang > b,
   .article-body .ho > b,
-  .article-body .mok > b{ display:none !important; }
-
-  /* ▼ 중요 하이라이트 스타일 (신규) */
-  .hi-important{
-    font-weight:800;
-    background: color-mix(in oklab, var(--accent) 18%, transparent);
-    padding: 0 2px;
-    border-radius: 3px;
+  .article-body .mok > b{
+    display:none !important;
   }
 </style>
 </head>
@@ -254,7 +248,7 @@
     var pickBest=function(rows,wantCanon){
       if(!rows||!rows.length) return null;
       if(wantsEO){
-        var eoExact=rows.find(function(x){return (/(시행령|시행규칙)/).test(x.법령명한글)&&clean(x.법령명한글)===wantCanon});
+        var eoExact=rows.find(function(x){return (/시행령|시행규칙/).test(x.법령명한글)&&clean(x.법령명한글)===wantCanon});
         if(eoExact) return eoExact;
         var eoSuffix=rows.find(function(x){return (x.법령명한글||'').trim().endsWith(wantsEO)});
         if(eoSuffix) return eoSuffix;
@@ -364,54 +358,6 @@
   function skeleton(n){n=n||2; var arr=[]; for(var i=0;i<n;i++){arr.push('<li class="item"><div class="sk-line skeleton" style="width:58%"></div><div class="sk-gap"></div><div class="sk-line skeleton" style="width:32%"></div></li>')} return arr.join('')}
   var sanitize=function(html){return (html||'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')};
 
-  /* ===== 중요도 하이라이트 (신규) ===== */
-  function applyHeuristicHighlight(rootEl){
-    if(!rootEl) return;
-    const patterns = [
-      /(하여야\s*한다|해야\s*한다|하지\s*아니한다|금지한다|아니한다)/g,          // 의무/금지
-      /(할\s*수\s*있다|할\s*수\s*없다|수\s*있다|수\s*없다)/g,                      // 재량/허용
-      /(처벌|형에\s*처한다|징역|금고|벌금|과태료|몰수|추징)/g,                         // 제재/벌칙
-      /\b\d+(?:\.\d+)?\s*(?:일|개월|월|연|년|시간|분|초|만원|원|퍼센트|%|배)\b/g,      // 기간/금액/비율
-      /(제\d+조(?:의\d+)?|제\d+항|제\d+호|[가-하]\s*목)/g                             // 조문 표식
-    ];
-
-    const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, {
-      acceptNode(node){
-        const s=(node.nodeValue||'').trim();
-        if(!s) return NodeFilter.FILTER_REJECT;
-        if(node.parentElement && (node.parentElement.closest('.links') || node.parentElement.classList.contains('mini'))){
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    });
-
-    const replacements=[];
-    while(walker.nextNode()){
-      const node=walker.currentNode;
-      let text=node.nodeValue;
-      let changed=false;
-      patterns.forEach((re)=>{ text=text.replace(re,(m)=>`@@HI_START@@${m}@@HI_END@@`); });
-      if(text!==node.nodeValue){
-        changed=true;
-        const span=document.createElement('span');
-        span.innerHTML = text
-          .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-          .replace(/@@HI_START@@/g,'<b class="hi-important">')
-          .replace(/@@HI_END@@/g,'</b>');
-        if(changed) replacements.push({node, span});
-      }
-    }
-    replacements.forEach(({node,span})=>{ node.parentNode.replaceChild(span,node); });
-  }
-
-  // (선택) AI 강조 훅 — 필요 시 백엔드 API와 연동해 중요 구절 배열을 받아 래핑
-  async function applyAIHighlight(rootEl){
-    // const text = rootEl.innerText;
-    // const phrases = await fetch('/your-api', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text})}).then(r=>r.json());
-    // wrapByPhrases(rootEl, phrases);
-  }
-
   /* ===== Article preview (modal) ===== */
   async function fetchArticleXML(urlXML){
     var xmlText=await fetchTextDirectOrProxy(urlXML);
@@ -442,13 +388,13 @@
     if(data.hangs && data.hangs.length){
       var parts=[];
       data.hangs.forEach(function(h,i){
-        if(h.hTitle) parts.push('<div class="hang">'+ '' + sanitize(h.hTitle)+'</div>');
+        if(h.hTitle) parts.push('<div class="hang">'+ /* 번호 숨김 */ '' + sanitize(h.hTitle)+'</div>');
         if(h.hos && h.hos.length){
           h.hos.forEach(function(ho,j){
-            if(ho.hoText) parts.push('<div class="ho">'+ '' + sanitize(ho.hoText)+'</div>');
+            if(ho.hoText) parts.push('<div class="ho">'+ /* 번호 숨김 */ '' + sanitize(ho.hoText)+'</div>');
             if(ho.moks && ho.moks.length){
               ho.moks.forEach(function(mk,k){
-                parts.push('<div class="mok">'+ '' + sanitize(mk)+'</div>');
+                parts.push('<div class="mok">'+ /* 번호 숨김 */ '' + sanitize(mk)+'</div>');
               });
             }
           });
@@ -458,12 +404,6 @@
     }
     if(!html) html='<div class="mini">조문 본문을 불러오지 못했습니다.</div>';
     if(body) body.innerHTML=html;
-
-    // ▼ 중요도 하이라이트 적용 (신규)
-    applyHeuristicHighlight(body);
-    // ▼ (선택) AI 강조 모드 — UI 토글 연동 시 활성화
-    // if(document.querySelector('#aiToggle')?.checked){ await applyAIHighlight(body); }
-
     if(modal) modal.classList.add('on');
   }
 
@@ -479,15 +419,15 @@
   function appendResult(listEl, payload){
     var title=payload.title, lawId=payload.lawId, lsiSeq=payload.lsiSeq, articleURL=payload.articleURL, fullURL=payload.fullURL, lawName=payload.lawName, joText=payload.joText;
     var li=document.createElement('li'); li.className='item';
-    li.innerHTML=''+
-      '<div class="item-line">'+
-        '<span class="t">'+title+'</span>'+
-        '<span class="meta">법령ID: '+lawId+(lsiSeq?(' · 일련번호: '+lsiSeq):'')+'</span>'+
-        '<span class="links">'+
-          '① <button type="button" class="preview-btn">조문 미리보기</button>'+
-          ' · ② <a class="go-article" href="'+articleURL+'" target="_blank" rel="noopener">조문 바로가기</a>'+
-          ' · ③ <a class="go-full" href="'+fullURL+'" target="_blank" rel="noopener">법령 전체</a>'+
-        '</span>'+
+    li.innerHTML='' +
+      '<div class="item-line">' +
+        '<span class="t">'+title+'</span>' +
+        '<span class="meta">법령ID: '+lawId+(lsiSeq?(' · 일련번호: '+lsiSeq):'')+'</span>' +
+        '<span class="links">' +
+          '① <button type="button" class="preview-btn">조문 미리보기</button>' +
+          ' · ② <a class="go-article" href="'+articleURL+'" target="_blank" rel="noopener">조문 바로가기</a>' +
+          ' · ③ <a class="go-full" href="'+fullURL+'" target="_blank" rel="noopener">법령 전체</a>' +
+        '</span>' +
       '</div>';
 
     var a=li.querySelector('.go-article');
@@ -558,27 +498,28 @@
   }
 
   function bind(){
-    var runBtn=$('#run'); if(runBtn){ runBtn.addEventListener('click', run); }
-    var clearBtn=$('#clear');
-    if(clearBtn){
-      clearBtn.addEventListener('click', function(){
-        var resUl = $('#resList');
-        if(resUl) resUl.innerHTML = '';
-        var input = $('#input');
-        if(input){ input.value = ''; input.focus(); }
-      });
-    }
-
-    var input=$('#input');
-    if(input){
-      input.addEventListener('keydown', function(e){
-        if(e.key==='Enter' && !e.altKey && !e.shiftKey && !e.ctrlKey){
-          e.preventDefault(); run();
-        }
-      });
-    }
-    bindModal();
+  var runBtn=$('#run'); if(runBtn){ runBtn.addEventListener('click', run); }
+  var clearBtn=$('#clear');
+  if(clearBtn){
+    clearBtn.addEventListener('click', function(){
+      var resUl = $('#resList');
+      if(resUl) resUl.innerHTML = '';
+      var input = $('#input');
+      if(input){ input.value = ''; input.focus(); }
+    });
   }
+
+  var input=$('#input');
+  if(input){
+    input.addEventListener('keydown', function(e){
+      if(e.key==='Enter' && !e.altKey && !e.shiftKey && !e.ctrlKey){
+        e.preventDefault(); run();
+      }
+    });
+  }
+  bindModal();
+}
+
 
   if(document.readyState==='loading'){
     document.addEventListener('DOMContentLoaded', bind);
