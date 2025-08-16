@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>법조문 자동 추출·검색 · 단일파일(정확도 개선 v2)</title>
+<title>법조문 자동 추출·검색 (정확도 개선 v2)</title>
 <style>
   :root{--bg:#0b1020; --panel:#0f152b; --muted:#8ea0c7; --line:#1c2748; --accent:#78a6ff; --accent-2:#9ec1ff; --txt:#eaf1ff; --txt-muted:#aab9dd; --radius:14px; --shadow:0 10px 28px rgba(0,0,0,.32)}
   @media (prefers-color-scheme: light){ :root{ --bg:#f5f7ff; --panel:#fff; --muted:#596180; --line:#e6eaff; --accent:#2e5cff; --accent-2:#4c78ff; --txt:#0c1330; --txt-muted:#5e6a8a; --shadow:0 8px 20px rgba(15,23,52,.08)} }
@@ -18,8 +18,23 @@
   .card.pad{padding:16px}
   .grid{display:grid;grid-template-columns:1fr 360px;gap:16px}
   @media (max-width: 900px){ .grid{grid-template-columns:1fr} }
-  textarea{width:100%;min-height:170px;padding:14px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--txt);resize:vertical}
+
+  /* 입력창 사이즈 조정 */
+  textarea{
+    width:100%;
+    min-height:120px;  /* 줄임 */
+    height:140px;      /* 스크롤 포함 영역이 안쪽에 다 들어오도록 고정 높이 */
+    padding:12px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--txt);
+    resize:vertical;
+    box-sizing:border-box; /* 패딩/테두리 포함 */
+    line-height:1.45;
+  }
   textarea:focus{outline:none;box-shadow:0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent)}
+
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .label{font-weight:600;color:var(--txt-muted);font-size:.92rem}
   input[type="text"]{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--txt);min-width:260px}
@@ -31,12 +46,33 @@
   .badge{display:inline-flex;gap:6px;align-items:center;padding:2px 8px;border-radius:999px;background:color-mix(in oklab, var(--accent) 14%, transparent);color:var(--accent-2);border:1px solid var(--line);font-size:.8rem}
   .result{margin-top:18px}
   .result h2{margin:0 0 8px;font-size:1.05rem}
+
+  /* 결과 1행 레이아웃 */
   ol{margin:0;padding-left:20px}
-  .item{padding:14px;border-top:1px dashed var(--line)}
-  .meta{font-size:.86rem;color:var(--txt-muted)}
-  .links{margin-top:6px;display:flex;gap:10px;flex-wrap:wrap}
-  .links a,.links button{color:var(--accent-2);text-decoration:none;border:1px dashed color-mix(in oklab, var(--accent) 30%, transparent);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer}
+  .item{padding:10px 8px;border-top:1px dashed var(--line)}
+  .item-line{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    white-space:nowrap;           /* 1행 */
+    overflow:hidden;              /* 넘치면 잘라냄 */
+    text-overflow:ellipsis;
+  }
+  .t{font-weight:700;flex:0 0 auto}
+  .meta{font-size:.86rem;color:var(--txt-muted);flex:0 0 auto}
+  .links{display:flex;gap:10px;flex:0 0 auto}
+  .links a,.links button{
+    color:var(--accent-2);
+    text-decoration:none;
+    border:1px dashed color-mix(in oklab, var(--accent) 30%, transparent);
+    background:transparent;
+    border-radius:8px;
+    padding:4px 8px;
+    cursor:pointer;
+    font-size:.86rem;
+  }
   .links a:hover,.links button:hover{text-decoration:underline}
+
   .mini{font-size:.86rem;color:var(--txt-muted)}
   .right{margin-left:auto}
   .toast{position:fixed;right:18px;bottom:18px;display:none;z-index:50}
@@ -47,7 +83,7 @@
   .sk-line{height:14px;border-radius:6px;opacity:.45}
   .sk-gap{height:10px}
 
-  /* === Modal for article preview === */
+  /* 모달 (클릭 미리보기 유지) */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:100}
   .modal.on{display:flex}
   .modal .panel{max-width:840px;max-height:80vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px}
@@ -64,7 +100,7 @@
 <div class="wrap">
   <header>
     <div class="title">
-      <h1>법조문 자동 추출·검색 <span class="mini">· 단일파일</span></h1>
+      <h1>법조문 자동 추출·검색</h1>
       <div class="sub">본문에서 법령·조문을 찾아 <b>조문 바로가기</b>와 <b>전체 본문</b> 링크만 제공합니다. <span class="mini">(같은법/동법 류는 제외)</span></div>
     </div>
     <div class="badge">OC: bro3362</div>
@@ -133,13 +169,12 @@
     if(HANG)p.HANG=HANG;if(HO)p.HO=HO;if(MOK)p.MOK=MOK;
     return buildURL('/lawService.do',p)
   }
-  // NEW: XML URL for full article content (robust)
   const buildLawArticleXMLURL=(id,{jo,joi,hang,ho,mok})=>{
     const JO=joTo6(jo,joi);
     const HANG=(hang?pad(hang,6):(ho?'000000':''));
     const HO=(ho?pad(ho,6):'');
     const MOK=(mok?String(mok).trim().slice(0,1).replace(/[^가-하]/g,''):'');
-    const p={OC,target:'lawjosub',type:'XML',ID:id,JO};
+    const p={OC,target:'lawjosub',type:'XML',ID=id,JO};
     if(HANG)p.HANG=HANG;if(HO)p.HO=HO;if(MOK)p.MOK=MOK;
     return buildURL('/lawService.do',p)
   }
@@ -196,21 +231,18 @@
   /* ===== UI helpers ===== */
   const toast=(msg,ms=2000)=>{const el=$('#toast'); $('#toastMsg').textContent=msg; el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),ms)}
   const skeleton=(n=2)=>{const arr=[]; for(let i=0;i<n;i++){arr.push(`<li class="item"><div class="sk-line skeleton" style="width:58%"></div><div class="sk-gap"></div><div class="sk-line skeleton" style="width:32%"></div></li>`);} return arr.join('')}
-  // very light sanitization for innerHTML
   const sanitize=(html)=> (html||'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
 
-  /* ===== Article preview (NEW) ===== */
+  /* ===== Article preview (modal) ===== */
   async function fetchArticleXML(urlXML){
     const xmlText = await fetchTextDirectOrProxy(urlXML);
     if(!xmlText) return null;
     let dom;
     try{ dom = new DOMParser().parseFromString(xmlText,'text/xml'); }
     catch{ return null; }
-    // DRF XML 구조: <조문제목>, <조문내용> (HTML 포맷 포함), <항> 다수, 그 안에 <호>, <목> 등
     const get = (tag, node=dom)=> node.getElementsByTagName(tag)[0]?.textContent?.trim() || '';
     const title = get('조문제목') || '';
-    const articleBodyRaw = get('조문내용') || ''; // 포함된 HTML 허용
-    // 항/호/목 구성
+    const articleBodyRaw = get('조문내용') || '';
     const hangs = [...dom.getElementsByTagName('항')].map(h=>{
       const hTitle = h.getElementsByTagName('항내용')[0]?.textContent?.trim() || '';
       const hos = [...h.getElementsByTagName('호')].map(ho=>{
@@ -220,18 +252,14 @@
       });
       return {hTitle, hos};
     });
-
     return {title, articleBodyRaw, hangs};
   }
 
   function renderArticlePreview({lawName, joLabel, data}){
     const modal = $('#modal'), body = $('#modalBody'), titleEl = $('#modalTitle');
     titleEl.textContent = `${lawName} ${joLabel} (전문)`;
-    // 기본: 조문내용(원문 HTML) 우선 사용, 없을 경우 항/호/목으로 구성
     let html = '';
-    if(data.articleBodyRaw){
-      html += `<div>${sanitize(data.articleBodyRaw)}</div>`;
-    }
+    if(data.articleBodyRaw){ html += `<div>${sanitize(data.articleBodyRaw)}</div>`; }
     if(data.hangs?.length){
       const parts = [];
       data.hangs.forEach((h,i)=>{
@@ -259,18 +287,21 @@
     $('#modal')?.addEventListener('click', (e)=>{ if(e.target.id==='modal') $('#modal').classList.remove('on'); });
   }
 
-  /* ===== Result list ===== */
+  /* ===== Result list (1행 + 라벨/순서 변경) ===== */
   function appendResult(listEl,{title,lawId,lsiSeq,articleURL,fullURL, lawName, joText}){
     const li=document.createElement('li'); li.className='item';
     li.innerHTML=`
-      <div><b>${title}</b></div>
-      <div class="meta">법령ID: ${lawId}${lsiSeq?` · 일련번호: ${lsiSeq}`:''}</div>
-      <div class="links">
-        ① <a class="go-article" href="${articleURL}" target="_blank" rel="noopener">조문 바로가기</a>
-        · ② <a href="${fullURL}" target="_blank" rel="noopener">전체 본문</a>
-        · ③ <button type="button" class="preview-btn">조문 전문 미리보기</button>
+      <div class="item-line">
+        <span class="t">${title}</span>
+        <span class="meta">법령ID: ${lawId}${lsiSeq?` · 일련번호: ${lsiSeq}`:''}</span>
+        <span class="links">
+          ① <button type="button" class="preview-btn">조문 미리보기</button>
+          · ② <a class="go-article" href="${articleURL}" target="_blank" rel="noopener">조문 바로가기</a>
+          · ③ <a class="go-full" href="${fullURL}" target="_blank" rel="noopener">법령 전체</a>
+        </span>
       </div>`;
-    // 기존 동작: 사전 점검 후 새 탭
+
+    // ② 조문 바로가기: 사전 체크 후 새 탭
     const a=li.querySelector('.go-article');
     a.addEventListener('click', async (e)=>{
       e.preventDefault();
@@ -279,7 +310,8 @@
       if(html && !isFailPage(html)) window.open(url,'_blank','noopener');
       else window.open(publicLawURL(title.split(' 제')[0]),'_blank','noopener');
     });
-    // NEW: 미리보기
+
+    // ① 조문 미리보기 (모달)
     const btn = li.querySelector('.preview-btn');
     btn.addEventListener('click', async ()=>{
       btn.disabled = true;
@@ -293,7 +325,7 @@
         }
       } finally{
         btn.disabled = false;
-        btn.textContent = '조문 전문 미리보기';
+        btn.textContent = '조문 미리보기';
       }
     });
 
@@ -307,7 +339,7 @@
     resUl.innerHTML=skeleton(2);
 
     const cites=extract(text);
-    if(!cites.length){ resUl.innerHTML='<li class="item meta">인식 가능한 명시적 법령·조문을 찾지 못했습니다. (같은법/동법 제외) · 예: 「사립학교법」 제43조</li>'; return; }
+    if(!cites.length){ resUl.innerHTML='<li class="item mini">인식 가능한 명시적 법령·조문을 찾지 못했습니다. (같은법/동법 제외) · 예: 「사립학교법」 제43조</li>'; return; }
 
     const rows=await Promise.allSettled(cites.map(it=>searchLawRow(it.name)));
     resUl.innerHTML='';
@@ -315,8 +347,8 @@
     cites.forEach((it,i)=>{
       const st=rows[i]; const row=(st.status==='fulfilled')?st.value:null;
       if(!row){
-        const li=document.createElement('li'); li.className='item meta';
-        li.innerHTML=`법령ID 검색 실패: <a href="${publicLawURL(it.name)}" target="_blank" rel="noopener">${it.name}</a>`;
+        const li=document.createElement('li'); li.className='item mini';
+        li.innerHTML=`<div class="item-line"><span class="t">법령ID 검색 실패</span> <span class="meta">·</span> <span><a href="${publicLawURL(it.name)}" target="_blank" rel="noopener">${it.name}</a></span></div>`;
         resUl.appendChild(li); return;
       }
       const lawId=row.법령ID||''; const lsiSeq=row.법령일련번호||'';
