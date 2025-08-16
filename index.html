@@ -95,11 +95,11 @@
   .article-body .mok{margin-left:36px}
   .article-body b{color:var(--accent-2)}
 
-  /* ▼ 추가: 미리보기에서 항/호/목 번호는 파란색(강조색) 제거 */
+  /* ▼ 추가: 미리보기에서 항/호/목 번호 요소 자체를 숨김 */
   .article-body .hang > b,
   .article-body .ho > b,
   .article-body .mok > b{
-    color: inherit !important;
+    display:none !important;
   }
 </style>
 </head>
@@ -388,13 +388,13 @@
     if(data.hangs && data.hangs.length){
       var parts=[];
       data.hangs.forEach(function(h,i){
-        if(h.hTitle) parts.push('<div class="hang"><b>('+(i+1)+')</b> '+sanitize(h.hTitle)+'</div>');
+        if(h.hTitle) parts.push('<div class="hang">'+ /* 번호 숨김 */ '' + sanitize(h.hTitle)+'</div>');
         if(h.hos && h.hos.length){
           h.hos.forEach(function(ho,j){
-            if(ho.hoText) parts.push('<div class="ho"><b>'+(j+1)+'.</b> '+sanitize(ho.hoText)+'</div>');
+            if(ho.hoText) parts.push('<div class="ho">'+ /* 번호 숨김 */ '' + sanitize(ho.hoText)+'</div>');
             if(ho.moks && ho.moks.length){
               ho.moks.forEach(function(mk,k){
-                parts.push('<div class="mok"><b>('+(String.fromCharCode(0x3131+k))+')</b> '+sanitize(mk)+'</div>');
+                parts.push('<div class="mok">'+ /* 번호 숨김 */ '' + sanitize(mk)+'</div>');
               });
             }
           });
