@@ -47,7 +47,7 @@
   .sk-line{height:14px;border-radius:6px;opacity:.45}
   .sk-gap{height:10px}
 
-  /* === Modal for article preview === */
+  /* === Modal for article preview (click) === */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:100}
   .modal.on{display:flex}
   .modal .panel{max-width:840px;max-height:80vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px}
@@ -58,13 +58,35 @@
   .article-body .ho{margin-left:24px}
   .article-body .mok{margin-left:36px}
   .article-body b{color:var(--accent-2)}
+
+  /* === Hover Tooltip for article preview === */
+  .law-tip {
+    position: fixed;
+    z-index: 120;
+    display: none;
+    max-width: 520px;
+    max-height: 60vh;
+    overflow: auto;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    color: var(--txt);
+  }
+  .law-tip .title { font-weight: 600; margin-bottom: 6px; color: var(--accent-2); font-size: .92rem; }
+  .law-tip .article-body { line-height: 1.6; font-size: .86rem; }
+  .law-tip .hang{margin-left:12px}
+  .law-tip .ho{margin-left:24px}
+  .law-tip .mok{margin-left:36px}
+  .law-tip .article-body b{color: var(--accent-2)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <div class="title">
-      <h1>법조문 자동 추출·검색 <span class="mini">· 단일파일</span></h1>
+      <h1>법조문 자동 추출·검색</h1>
       <div class="sub">본문에서 법령·조문을 찾아 <b>조문 바로가기</b>와 <b>전체 본문</b> 링크만 제공합니다. <span class="mini">(같은법/동법 류는 제외)</span></div>
     </div>
     <div class="badge">OC: bro3362</div>
@@ -97,13 +119,19 @@
 
 <div id="toast" class="toast"><div class="box mini" id="toastMsg">안내</div></div>
 
-<!-- Article preview modal -->
+<!-- Article preview modal (click) -->
 <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="panel">
     <button class="close" id="modalClose" title="닫기">✕</button>
     <h3 id="modalTitle">조문 전문</h3>
     <div id="modalBody" class="article-body mini">로딩 중…</div>
   </div>
+</div>
+
+<!-- Global tooltip container -->
+<div id="lawTip" class="law-tip" aria-hidden="true">
+  <div class="title"></div>
+  <div class="article-body mini">불러오는 중…</div>
 </div>
 
 <script>
@@ -119,6 +147,8 @@
   const buildURL=(p,params)=>{const u=new URL(DRF+p);Object.entries(params).forEach(([k,v])=>{if(v!=null&&v!=='')u.searchParams.set(k,v)});return u.toString();}
   const withProxy=(url,base)=>{let b=(base||'https://law-proxy.hyok96.workers.dev/?url=').trim();if(!b.includes('?'))b+=(b.endsWith('/')?'':'/')+'?';if(!/\burl=/.test(b))b+='url=';return b+encodeURIComponent(url)}
   const lawIdCache=new Map();
+  const previewCache = new Map(); // key: `${lawId}|${JO/HANG/HO/MOK}` -> HTML
+
   async function fetchTextDirectOrProxy(url,{timeoutMs=7000}={}){const fetchWithTimeout=u=>{const ac=new AbortController();const id=setTimeout(()=>ac.abort(),timeoutMs);return fetch(u,{signal:ac.signal}).finally(()=>clearTimeout(id))};try{const r=await fetchWithTimeout(url);if(r.ok){const t=await r.text();if((r.headers.get('content-type')||'').includes('json')||t.length>30)return t}}catch(_){}try{const r2=await fetchWithTimeout(withProxy(url,proxyBase()));if(r2.ok){const t2=await r2.text();if((r2.headers.get('content-type')||'').includes('json')||t2.length>30)return t2}}catch(_){}return ''}
   const isFailPage=html=>/페이지\s*접속에\s*실패하였습니다|사용자인증에\s*실패하였습니다|페이지를\s*찾을\s*수\s*없습니다/.test((html||'').replace(/\u00A0/g,' '))
   const publicLawURL=name=>'https://www.law.go.kr/법령/'+enc(name)
@@ -133,13 +163,12 @@
     if(HANG)p.HANG=HANG;if(HO)p.HO=HO;if(MOK)p.MOK=MOK;
     return buildURL('/lawService.do',p)
   }
-  // NEW: XML URL for full article content (robust)
   const buildLawArticleXMLURL=(id,{jo,joi,hang,ho,mok})=>{
     const JO=joTo6(jo,joi);
     const HANG=(hang?pad(hang,6):(ho?'000000':''));
     const HO=(ho?pad(ho,6):'');
     const MOK=(mok?String(mok).trim().slice(0,1).replace(/[^가-하]/g,''):'');
-    const p={OC,target:'lawjosub',type:'XML',ID:id,JO};
+    const p={OC,target:'lawjosub',type:'XML',ID=id,JO};
     if(HANG)p.HANG=HANG;if(HO)p.HO=HO;if(MOK)p.MOK=MOK;
     return buildURL('/lawService.do',p)
   }
@@ -196,21 +225,18 @@
   /* ===== UI helpers ===== */
   const toast=(msg,ms=2000)=>{const el=$('#toast'); $('#toastMsg').textContent=msg; el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),ms)}
   const skeleton=(n=2)=>{const arr=[]; for(let i=0;i<n;i++){arr.push(`<li class="item"><div class="sk-line skeleton" style="width:58%"></div><div class="sk-gap"></div><div class="sk-line skeleton" style="width:32%"></div></li>`);} return arr.join('')}
-  // very light sanitization for innerHTML
   const sanitize=(html)=> (html||'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
 
-  /* ===== Article preview (NEW) ===== */
+  /* ===== Article preview (click modal) ===== */
   async function fetchArticleXML(urlXML){
     const xmlText = await fetchTextDirectOrProxy(urlXML);
     if(!xmlText) return null;
     let dom;
     try{ dom = new DOMParser().parseFromString(xmlText,'text/xml'); }
     catch{ return null; }
-    // DRF XML 구조: <조문제목>, <조문내용> (HTML 포맷 포함), <항> 다수, 그 안에 <호>, <목> 등
     const get = (tag, node=dom)=> node.getElementsByTagName(tag)[0]?.textContent?.trim() || '';
     const title = get('조문제목') || '';
-    const articleBodyRaw = get('조문내용') || ''; // 포함된 HTML 허용
-    // 항/호/목 구성
+    const articleBodyRaw = get('조문내용') || '';
     const hangs = [...dom.getElementsByTagName('항')].map(h=>{
       const hTitle = h.getElementsByTagName('항내용')[0]?.textContent?.trim() || '';
       const hos = [...h.getElementsByTagName('호')].map(ho=>{
@@ -220,18 +246,14 @@
       });
       return {hTitle, hos};
     });
-
     return {title, articleBodyRaw, hangs};
   }
 
   function renderArticlePreview({lawName, joLabel, data}){
     const modal = $('#modal'), body = $('#modalBody'), titleEl = $('#modalTitle');
     titleEl.textContent = `${lawName} ${joLabel} (전문)`;
-    // 기본: 조문내용(원문 HTML) 우선 사용, 없을 경우 항/호/목으로 구성
     let html = '';
-    if(data.articleBodyRaw){
-      html += `<div>${sanitize(data.articleBodyRaw)}</div>`;
-    }
+    if(data.articleBodyRaw){ html += `<div>${sanitize(data.articleBodyRaw)}</div>`; }
     if(data.hangs?.length){
       const parts = [];
       data.hangs.forEach((h,i)=>{
@@ -259,6 +281,61 @@
     $('#modal')?.addEventListener('click', (e)=>{ if(e.target.id==='modal') $('#modal').classList.remove('on'); });
   }
 
+  /* ===== Tooltip helpers ===== */
+  function buildArticleHTML(data){
+    let html = '';
+    if(data?.articleBodyRaw){ html += `<div>${sanitize(data.articleBodyRaw)}</div>`; }
+    if(data?.hangs?.length){
+      const parts=[];
+      data.hangs.forEach((h,i)=>{
+        if(h.hTitle) parts.push(`<div class="hang"><b>(${i+1})</b> ${sanitize(h.hTitle)}</div>`);
+        if(h.hos?.length){
+          h.hos.forEach((ho,j)=>{
+            if(ho.hoText) parts.push(`<div class="ho"><b>${j+1}.</b> ${sanitize(ho.hoText)}</div>`);
+            if(ho.moks?.length){
+              ho.moks.forEach((mk,k)=>{
+                parts.push(`<div class="mok"><b>(${String.fromCharCode(0x3131+k)})</b> ${sanitize(mk)}</div>`);
+              });
+            }
+          });
+        }
+      });
+      html += parts.join('');
+    }
+    return html || '<div class="mini">조문 본문을 불러오지 못했습니다.</div>';
+  }
+
+  function showTipNear(btnEl, titleText, html){
+    const tip = $('#lawTip');
+    const title = tip.querySelector('.title');
+    const body = tip.querySelector('.article-body');
+    title.textContent = titleText;
+    body.innerHTML = html;
+
+    const rect = btnEl.getBoundingClientRect();
+    const PADDING = 8;
+    tip.style.display = 'block';
+    // 크기 먼저 측정
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+
+    const preferTop = rect.top > window.innerHeight/2;
+    let top = preferTop ? Math.max(PADDING, rect.top - th - 10)
+                        : Math.min(window.innerHeight - th - PADDING, rect.bottom + 10);
+    let left = Math.min(
+      Math.max(PADDING, rect.left + (rect.width/2) - (tw/2)),
+      window.innerWidth - tw - PADDING
+    );
+
+    tip.style.top = `${top}px`;
+    tip.style.left = `${left}px`;
+  }
+
+  function hideTip(){
+    const tip = $('#lawTip');
+    tip.style.display = 'none';
+  }
+
   /* ===== Result list ===== */
   function appendResult(listEl,{title,lawId,lsiSeq,articleURL,fullURL, lawName, joText}){
     const li=document.createElement('li'); li.className='item';
@@ -268,9 +345,8 @@
       <div class="links">
         ① <a class="go-article" href="${articleURL}" target="_blank" rel="noopener">조문 바로가기</a>
         · ② <a href="${fullURL}" target="_blank" rel="noopener">전체 본문</a>
-        · ③ <button type="button" class="preview-btn">조문 전문 미리보기</button>
+        · ③ <button type="button" class="preview-btn" aria-label="조문 전문 미리보기(호버)">조문 전문 미리보기</button>
       </div>`;
-    // 기존 동작: 사전 점검 후 새 탭
     const a=li.querySelector('.go-article');
     a.addEventListener('click', async (e)=>{
       e.preventDefault();
@@ -279,7 +355,8 @@
       if(html && !isFailPage(html)) window.open(url,'_blank','noopener');
       else window.open(publicLawURL(title.split(' 제')[0]),'_blank','noopener');
     });
-    // NEW: 미리보기
+
+    // 클릭하면 기존 모달 그대로 유지
     const btn = li.querySelector('.preview-btn');
     btn.addEventListener('click', async ()=>{
       btn.disabled = true;
@@ -296,6 +373,33 @@
         btn.textContent = '조문 전문 미리보기';
       }
     });
+
+    // 호버 툴팁: 최초 한 번만 로드 후 캐시
+    const tipKey = `${lawId}|${joTo6(joText.jo, joText.joi)}|${joText.hang||''}|${joText.ho||''}|${joText.mok||''}`;
+    let enterTimer=null, leaveTimer=null;
+
+    const onEnter = async () => {
+      clearTimeout(leaveTimer);
+      enterTimer = setTimeout(async () => {
+        let html = previewCache.get(tipKey);
+        if(!html){
+          const xmlURL = buildLawArticleXMLURL(lawId, joText);
+          const data = await fetchArticleXML(xmlURL);
+          html = buildArticleHTML(data||{});
+          previewCache.set(tipKey, html);
+        }
+        showTipNear(btn, `${lawName} ${title.replace(lawName,'').trim()} (전문)`, html);
+      }, 150); // 짧은 지연으로 오동작 방지
+    };
+    const onLeave = () => {
+      clearTimeout(enterTimer);
+      leaveTimer = setTimeout(hideTip, 120);
+    };
+    btn.addEventListener('mouseenter', onEnter);
+    btn.addEventListener('mouseleave', onLeave);
+
+    // 버튼이 화면에서 이동할 때도 숨김
+    btn.addEventListener('blur', hideTip);
 
     listEl.appendChild(li);
   }
@@ -337,6 +441,9 @@
     $('#clear')?.addEventListener('click', ()=>{ $('#resList').innerHTML=''; });
     $('#input')?.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.altKey && !e.shiftKey && !e.ctrlKey){ e.preventDefault(); run(); } });
     bindModal();
+    // 휠 스크롤/리사이즈 시 툴팁 숨김(위치 어긋남 방지)
+    window.addEventListener('scroll', hideTip, {passive:true});
+    window.addEventListener('resize', hideTip);
   }
   document.addEventListener('DOMContentLoaded', bind);
 })();
