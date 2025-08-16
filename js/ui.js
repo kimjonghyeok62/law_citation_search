@@ -1,3 +1,4 @@
+
 // ============ js/ui.js ============
 export function sanitizeForEmbed(html){
   try{
@@ -5,6 +6,12 @@ export function sanitizeForEmbed(html){
     const doc = document.implementation.createHTMLDocument('');
     doc.body.innerHTML = html;
     doc.querySelectorAll('script,style,link,meta,iframe,header,footer,nav').forEach(n=>n.remove());
+    // 추가: 위험 속성 제거
+    [...doc.querySelectorAll('*')].forEach(n=>{
+      [...n.attributes].forEach(a=>{
+        if(/^on/i.test(a.name) || /^javascript:/i.test(a.value)) n.removeAttribute(a.name);
+      });
+    });
     const bodyHTML = doc.body.innerHTML;
     const MAX = 12000;
     return bodyHTML.length > MAX ? bodyHTML.slice(0, MAX) + '<div class="small">…(생략)</div>' : bodyHTML;
