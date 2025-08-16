@@ -498,18 +498,28 @@
   }
 
   function bind(){
-    var runBtn=$('#run'); if(runBtn){ runBtn.addEventListener('click', run); }
-    var clearBtn=$('#clear'); if(clearBtn){ clearBtn.addEventListener('click', function(){ var resUl=$('#resList'); if(resUl) resUl.innerHTML=''; }); }
-    var input=$('#input');
-    if(input){
-      input.addEventListener('keydown', function(e){
-        if(e.key==='Enter' && !e.altKey && !e.shiftKey && !e.ctrlKey){
-          e.preventDefault(); run();
-        }
-      });
-    }
-    bindModal();
+  var runBtn=$('#run'); if(runBtn){ runBtn.addEventListener('click', run); }
+  var clearBtn=$('#clear');
+  if(clearBtn){
+    clearBtn.addEventListener('click', function(){
+      var resUl = $('#resList');
+      if(resUl) resUl.innerHTML = '';
+      var input = $('#input');
+      if(input){ input.value = ''; input.focus(); }
+    });
   }
+
+  var input=$('#input');
+  if(input){
+    input.addEventListener('keydown', function(e){
+      if(e.key==='Enter' && !e.altKey && !e.shiftKey && !e.ctrlKey){
+        e.preventDefault(); run();
+      }
+    });
+  }
+  bindModal();
+}
+
 
   if(document.readyState==='loading'){
     document.addEventListener('DOMContentLoaded', bind);
