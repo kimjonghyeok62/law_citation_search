@@ -317,21 +317,49 @@
       .replace(/\s+/g,' ')
       .trim();
   }
+
+  // 법명 패턴
   var LAW_BASE='[가-힣A-Za-z0-9·ㆍ\\s]+?(?:법|법률)';
   var LAW_EO='(?:시행령|시행규칙)';
   var NAME_GROUP='('+LAW_BASE+'(?:\\s*'+LAW_EO+')?)';
+
   var D='\\d+';
   var JO='제\\s*('+D+')\\s*조(?:\\s*의\\s*('+D+'))?';
   var HANG='(?:\\s*제?\\s*('+D+')\\s*항)?';
   var HO='(?:\\s*제?\\s*('+D+')\\s*호)?';
   var MOK='(?:\\s*([가-하])\\s*목)?';
-  var QUOTED_ANY=new RegExp('[«"\']\\s*'+NAME_GROUP+'\\s*[»"\']\\s*'+JO+HANG+HO+MOK,'g');
-  var EXPL_RE=new RegExp(NAME_GROUP+'\\s*'+JO+HANG+HO+MOK,'g');
 
-  // ▼ 추가: 법명만 있는 경우 (조문 없이) 추출 — 뒤에 '제..조'가 따라오지 않는 케이스만
-  var NAME_ONLY_RE=new RegExp(NAME_GROUP+'(?!\\s*제\\s*'+D+'\\s*조)','g');
+  // 인용부호 + 조문
+  var QUOTED_ANY=new RegExp('[«"\']\\s*'+NAME_GROUP+'\\s*[»"\']\\s*'+JO+HANG+HO+MOK,'g');
+  // 평문 + 조문
+  var EXPL_RE=new RegExp(NAME_GROUP+'\\s*'+JO+HANG+HO+MOK,'g');
+  // ★ 이름만 있는 경우: 앞뒤 경계가 있을 때만, 그리고 뒤에 "제..조"가 바로 오지 않을 때만
+  var NAME_ONLY_RE=new RegExp('(?:^|[\\s\\(\\[\\{«「"“\'])'+NAME_GROUP+'(?!\\s*제\\s*'+D+'\\s*조)(?=$|[\\s\\)\\]\\}»」"”\'.,;:!?])','g');
 
   var skipCtx=function(n){var s=(n||'').replace(/\s+/g,'');return s==='같은법'||s==='동법'||s==='같은법시행령'||s==='동법시행령'||s==='같은법시행규칙'||s==='동법시행규칙'};
+
+  // ★ 법명 유효성 검사(오탐 필터)
+  function isLikelyLawName(name){
+    var s=(name||'').trim();
+    if(!s) return false;
+    // 불용어/일반명사 배제
+    if(s==='법' || s==='법률') return false;
+    if(/방법$/.test(s)) return false; // 입찰방법/제출방법 등
+    if(/^(관련|관계|개정|현행|해당)\s*법$/.test(s)) return false;
+
+    // 시행령/시행규칙이 붙었는지 판별
+    var isEO=/(시행령|시행규칙)$/.test(s);
+    var core=isEO? s.replace(/\s*(시행령|시행규칙)$/,'').trim() : s;
+
+    // 기본: core가 '...법' 또는 '...법률'로 끝나야 함
+    if(!/(법|법률)$/.test(core)) return false;
+
+    // '법' 앞 글자 수(법/법률 제거 후)가 최소 1자(민법/상법 허용, '법' 단독 불허)
+    var base=core.replace(/(법|법률)$/,'');
+    if(base.length<1) return false;
+
+    return true;
+  }
 
   function extract(text){
     var src=normalizeText(text);
@@ -341,6 +369,7 @@
     function push(nm,jo,joi,hang,ho,mok){
       var name=refineLawName(display(nm));
       if(!name||skipCtx(name)) return;
+      if(!isLikelyLawName(name)) return; // ★ 오탐 필터 적용
       var key=[name,jo||'',joi||'',hang||'',ho||'',mok||''].join('|');
       if(seen.has(key)) return; seen.add(key);
       list.push({name:name,jo:jo,joi:joi,hang:hang,ho:ho,mok:mok});
@@ -349,11 +378,24 @@
     var m;
     while((m=QUOTED_ANY.exec(src))){ push(m[1],m[2],m[3],m[4],m[5],m[6]); }
     while((m=EXPL_RE.exec(src))){ push(m[1],m[2],m[3],m[4],m[5],m[6]); }
+    while((m=NAME_ONLY_RE.exec(src))){ push(m[1], null, null, null, null, null); }
 
-    // ▼ 추가 패스: "법명만" 있는 경우도 수집 (이미 조문으로 수집된 동일 법명은 중복 방지)
-    while((m=NAME_ONLY_RE.exec(src))){
-      push(m[1], null, null, null, null, null);
-    }
+    // ★ 같은 법명이 조문과 함께/없이 중복되면: 조문 있는 항목만 남김
+    var namesWithArticle=new Set(list.filter(function(x){return !!x.jo}).map(function(x){return x.name}));
+    list=list.filter(function(x){
+      if(x.jo) return true;
+      return !namesWithArticle.has(x.name); // 법명만인 항목은 같은 법명의 조문 항목이 있으면 제거
+    });
+
+    // ★ 법명만 항목도 최종 중복 제거(동일 이름) — 위 seen 키로 대부분 처리되지만 안전차원
+    var seenNameOnly=new Set();
+    list=list.filter(function(x){
+      if(x.jo) return true;
+      var k='nameonly|'+x.name;
+      if(seenNameOnly.has(k)) return false;
+      seenNameOnly.add(k);
+      return true;
+    });
 
     return list;
   }
@@ -392,13 +434,13 @@
     if(data.articleBodyRaw){ html+='<div>'+sanitize(data.articleBodyRaw)+'</div>'; }
     if(data.hangs && data.hangs.length){
       var parts=[];
-      data.hangs.forEach(function(h,i){
+      data.hangs.forEach(function(h){
         if(h.hTitle) parts.push('<div class="hang">'+ sanitize(h.hTitle)+'</div>');
         if(h.hos && h.hos.length){
-          h.hos.forEach(function(ho,j){
+          h.hos.forEach(function(ho){
             if(ho.hoText) parts.push('<div class="ho">'+ sanitize(ho.hoText)+'</div>');
             if(ho.moks && ho.moks.length){
-              ho.moks.forEach(function(mk,k){
+              ho.moks.forEach(function(mk){
                 parts.push('<div class="mok">'+ sanitize(mk)+'</div>');
               });
             }
@@ -424,7 +466,6 @@
   function appendResult(listEl, payload){
     var title=payload.title, lawId=payload.lawId, lsiSeq=payload.lsiSeq, articleURL=payload.articleURL, fullURL=payload.fullURL, lawName=payload.lawName, joText=payload.joText;
 
-    // 링크 구성: 조문정보 없으면 ③만
     var linkHtml='';
     if(joText){ // 조문이 있는 경우에만 ①, ② 노출
       linkHtml += '① <button type="button" class="preview-btn">조문 미리보기</button> · ';
@@ -440,7 +481,6 @@
         '<span class="links">' + linkHtml + '</span>' +
       '</div>';
 
-    // ② 조문 바로가기 (조문 있을 때만)
     if(joText){
       var a=li.querySelector('.go-article');
       if(a){
@@ -453,7 +493,6 @@
           });
         });
       }
-      // ① 미리보기
       var btn=li.querySelector('.preview-btn');
       if(btn){
         btn.addEventListener('click', async function(){
@@ -486,7 +525,7 @@
 
     var cites=extract(text);
     if(!cites.length){
-      if(resUl) resUl.innerHTML='<li class="item mini">인식 가능한 명시적 법령·조문(또는 법명)을 찾지 못했습니다. (같은법/동법 제외) · 예: 「사립학교법」, 「사립학교법」 제43조</li>';
+      if(resUl) resUl.innerHTML='<li class="item mini">인식 가능한 법령명/조문을 찾지 못했습니다. (같은법/동법 제외) · 예: 「사립학교법」, 「사립학교법」 제43조</li>';
       return;
     }
 
