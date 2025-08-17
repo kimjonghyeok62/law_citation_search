@@ -49,43 +49,60 @@
   ol{margin:0;padding-left:20px}
   .item{padding:10px 8px;border-top:1px dashed var(--line)}
 
-  /* 결과 행: 모바일에서도 줄바꿈되게 */
+  /* ✅ 결과 한 줄 레이아웃 */
   .item-line{
     display:flex;
     align-items:center;
-    gap:10px;
-    flex-wrap:wrap;
+    gap:12px;
+    flex-wrap:nowrap;             /* 한 줄 유지 */
+    overflow:hidden;
   }
-  .t{font-weight:700;flex:1 1 auto;min-width:0}
-  .meta{font-size:.86rem;color:var(--txt-muted);flex:0 1 auto;min-width:0}
-
-  /* 링크 영역: 그리드(자동 1~3열) + 버튼 통일 크기 */
-  .links{
-    display:grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap:10px;
-    width:100%;
+  /* 법명(제목) 영역: 길면 말줄임 */
+  .t{
+    font-weight:700;
+    flex:0 1 34%;
+    min-width:180px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }
-  .link-item{display:flex;gap:8px;align-items:stretch}
-  .num{
+  /* ID/일련번호: 법명 오른쪽 */
+  .meta{
     flex:0 0 auto;
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    width:28px;height:28px;
-    border-radius:999px;
-    border:1px solid color-mix(in oklab, var(--accent) 35%, transparent);
-    color:var(--accent-2);
-    font-size:.88rem;
-    line-height:1;
-    background:color-mix(in oklab, var(--accent) 12%, transparent);
-    user-select:none;
+    font-size:.86rem;
+    color:var(--txt-muted);
+    white-space:nowrap;
   }
-  .link-btn{
+
+  /* 링크 영역: 가로 나열 */
+  .links{
+    display:flex;                 /* ← grid → flex */
+    align-items:center;
+    gap:8px;
     flex:1 1 auto;
+    justify-content:flex-start;
+    min-width:0;
+    overflow:hidden;
+  }
+
+  /* 번호 모양(①②③)만 남기고 원형 테두리 제거 */
+  .num{
+    display:inline-block;
+    width:auto;height:auto;
+    border:none;                  /* 원형 테두리 제거 */
+    background:none;              /* 배경 제거 */
+    color:var(--txt-muted);
+    font-size:.9rem;
+    line-height:1;
+    padding:0;
+    margin-right:2px;
+  }
+
+  .link-btn{
+    flex:0 0 auto;
     text-align:center;
-    padding:10px 12px;
-    min-height:44px;                 /* 동일 높이 */
+    padding:8px 12px;             /* 약간 컴팩트 */
+    min-height:36px;              /* 동일 높이 */
     border-radius:10px;
     border:1px dashed color-mix(in oklab, var(--accent) 35%, transparent);
     background:transparent;
@@ -95,16 +112,12 @@
     align-items:center;
     justify-content:center;
     font-size:.95rem;
+    white-space:nowrap;
     transition:transform .06s ease, box-shadow .2s ease, background .2s ease;
   }
   .link-btn:hover{transform:translateY(-1px); text-decoration:underline}
   .link-btn:active{transform:translateY(0)}
   .link-btn[disabled]{opacity:.6;cursor:not-allowed}
-
-  /* 아주 좁은 화면은 1열 */
-  @media (max-width: 380px){
-    .links{grid-template-columns:1fr}
-  }
 
   .mini{font-size:.86rem;color:var(--txt-muted)}
   .right{margin-left:auto}
@@ -228,7 +241,7 @@
   };
   var buildLawArticleXMLURL=function(id,obj){
     var JO=joTo6(obj.jo,obj.joi);
-    var HANG=(obj.hang?pad(obj.hang,6):(obj.ho?'000000':''));
+    var HANG=(obj.hang?pad(obj.hang,6):(obj.ho?'000000':'')); 
     var HO=(obj.ho?pad(obj.ho,6):'');
     var MOK=(obj.mok?String(obj.mok).trim().slice(0,1).replace(/[^가-하]/g,''):'');
     var p={OC:OC,target:'lawjosub',type:'XML',ID:id,JO:JO};
@@ -476,7 +489,7 @@
   function appendResult(listEl, payload){
     var title=payload.title, lawId=payload.lawId, lsiSeq=payload.lsiSeq, articleURL=payload.articleURL, fullURL=payload.fullURL, lawName=payload.lawName, joText=payload.joText;
 
-    /* 가운데 점 제거하고, 번호 배지 + 버튼을 묶음으로 렌더링 */
+    /* 링크: 번호는 그대로, 스타일만 변경(원형 제거) */
     var linkHtml='';
     if(joText){
       linkHtml += '<span class="link-item"><span class="num">①</span><button type="button" class="link-btn preview-btn">조문 미리보기</button></span>';
@@ -485,7 +498,7 @@
     linkHtml += '<span class="link-item"><span class="num">③</span><a class="link-btn go-full" href="'+fullURL+'" target="_blank" rel="noopener">법령 전체</a></span>';
 
     var li=document.createElement('li'); li.className='item';
-    li.innerHTML='' +
+    li.innerHTML =
       '<div class="item-line">' +
         '<span class="t">'+title+'</span>' +
         (lawId ? '<span class="meta">법령ID: '+lawId+(lsiSeq?(' · 일련번호: '+lsiSeq):'')+'</span>' : '<span class="meta">법령ID 미확인</span>') +
