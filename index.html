@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>법조문 자동 추출·검색 (현행 우선 + 폴백, 조례/규칙 Fix)</title>
+<title>법조문 자동 추출·검색 (현행 우선 + 조례/규칙 강화)</title>
 <style>
   :root{--bg:#0b1020; --panel:#0f152b; --muted:#8ea0c7; --line:#1c2748; --accent:#78a6ff; --accent-2:#9ec1ff; --txt:#eaf1ff; --txt-muted:#aab9dd; --radius:14px; --shadow:0 10px 28px rgba(0,0,0,.32)}
   @media (prefers-color-scheme: light){ :root{ --bg:#f5f7ff; --panel:#fff; --muted:#596180; --line:#e6eaff; --accent:#2e5cff; --accent-2:#4c78ff; --txt:#0c1330; --txt-muted:#5e6a8a; --shadow:0 8px 20px rgba(15,23,52,.08)} }
@@ -71,7 +71,7 @@
   <header>
     <div class="title">
       <h1>법조문 자동 추출·검색</h1>
-      <div class="sub">본문에서 <b>법령/자치법규</b>를 찾아 <b>조문 미리보기</b>와 <b>전체 본문</b> 링크를 제공합니다. <span class="mini">현행 우선, 없으면 비현행도 폴백</span></div>
+      <div class="sub">본문에서 <b>법령/자치법규</b>를 찾아 <b>조문 미리보기</b>와 <b>전체 본문</b> 링크를 제공합니다. <span class="mini">현행 우선, 없으면 비현행·HTML도 폴백</span></div>
     </div>
     <div class="badge">OC: bro3362</div>
   </header>
@@ -179,17 +179,17 @@
   var canonName=function(s){return (s||'').replace(/[\s"“”'‘’\[\]\(\)「」]/g,'').replace(/[·ㆍ]/g,'')};
   var displayName=function(s){return (s||'').replace(/["“”'‘’\[\]\(\)「」]/g,'').trim()};
 
-  // ★ FIX: 종결 토큰 판별 정규식 수정 (문자클래스 -> 그룹)
+  // ★ 멀티워드 ‘…조례/규칙’ 이름 보존, ‘XX법 시행령/시행규칙’ 처리
   function refineLawName(name){
     var s=(name||'').trim(); if(!s) return s;
     s=s.replace(/^(?:까지|및|또는|등|관련|관한|따른|에\s*따른|에\s*의한|의)\s+/, '');
     var m=s.match(/^(.*?법(?:률)?)(?:\s*)?(시행령|시행규칙)$/);
     if(m) return (m[1]+' '+m[2]).trim();
-    var toks=s.split(/\s+/); var i=-1;
-    for(var k=toks.length-1;k>=0;k--){ if(/(법|법률|조례|규칙)$/.test(toks[k])){ i=k; break; } }
-    if(i>=0){
-      if(toks[i+1] && /^(시행령|시행규칙)$/.test(toks[i+1])) return (toks[i]+' '+toks[i+1]).trim();
-      return toks[i];
+    var toks=s.split(/\s+/); var cut=-1;
+    for(var k=toks.length-1;k>=0;k--){ if(/(법|법률|조례|규칙)$/.test(toks[k])){ cut=k; break; } }
+    if(cut>=0){
+      if(toks[cut+1] && /^(시행령|시행규칙)$/.test(toks[cut+1])) return toks.slice(0, cut+2).join(' ').trim();
+      return toks.slice(0, cut+1).join(' ').trim();
     }
     return s;
   }
@@ -203,17 +203,17 @@
     return Array.from(alts).filter(Boolean);
   }
 
-  // ===== 상태 헬퍼 =====
+  // 상태명 헬퍼
   var isCurrent = function(v){ return /현행/.test((v||'').trim()); };
 
-  // ===== 국가법령 검색: 현행 우선 → 없으면 비현행 폴백 → 마지막에 HTML도 폴백 =====
+  // ==== 국가법령 검색: 현행 우선 → 비현행 → HTML 폴백
   async function tryLawSearchAll(qCanon,qRaw){
     function pick(rows,preferCurrent){
       if(!rows||!rows.length) return null;
       var clean=function(s){return canonName(refineLawName(s||''))};
       var want = clean(qCanon);
       var pool = preferCurrent ? rows.filter(r=>isCurrent(r.status)) : rows.slice();
-      if(preferCurrent && !pool.length) pool = rows.slice(); // 비현행 허용
+      if(preferCurrent && !pool.length) pool = rows.slice();
       var exact=pool.find(x=>clean(x.name)===want);
       return exact || pool[0] || null;
     }
@@ -223,7 +223,7 @@
       try{
         var d=JSON.parse(t); var root=d&&(d.LawSearch||d);
         var rows=[]; if(root&&root.law){ rows=Array.isArray(root.law)?root.law:[root.law] }
-        return rows.map(x=>({kind:'law', name:(x.법령명한글||'').trim(), id:(x.법령ID||'').trim(), lsiSeq:(x.법령일련번호||'').trim(), status:(x.법령상태||'').trim()}));
+        return rows.map(x=>({kind:'law', name:(x.법령명한글||'').trim(), id:(x.법령ID||'').trim(), lsiSeq:(x.법령일련번호||'').trim(), status:(x.법령상태||x.법령상태명||'').trim()}));
       }catch(_){ return null; }
     }
     async function x(){
@@ -234,7 +234,7 @@
         var list=[].slice.call(dom.getElementsByTagName('law'));
         return list.map(n=>{
           var g=(tag)=>{var el=n.getElementsByTagName(tag)[0]; return el? (el.textContent||'').trim() : ''};
-          return {kind:'law', name:g('법령명한글'), id:g('법령ID'), lsiSeq:g('법령일련번호'), status:g('법령상태')};
+          return {kind:'law', name:g('법령명한글'), id:g('법령ID'), lsiSeq:g('법령일련번호'), status:(g('법령상태')||g('법령상태명'))};
         });
       }catch(_){ return null; }
     }
@@ -254,12 +254,11 @@
     var arr = await j() || await x();
     var chosen = pick(arr||[], true);
     if(chosen) return chosen;
-    // 비현행/HTML 폴백
     var arr2 = arr || await x() || await h() || [];
     return pick(arr2, false);
   }
 
-  // ===== 자치법규 검색: 현행 우선 → 없으면 비현행 폴백 → 마지막에 HTML도 폴백 =====
+  // ==== 자치법규 검색: 현행 우선 → 비현행 → HTML 폴백
   async function tryOrdinSearchAll(qCanon,qRaw){
     function pick(rows,preferCurrent){
       if(!rows||!rows.length) return null;
@@ -276,7 +275,14 @@
       try{
         var d=JSON.parse(t); var root=d&&(d.OrdinSearch||d);
         var rows=[]; if(root&&root.ordin){ rows=Array.isArray(root.ordin)?root.ordin:[root.ordin] }
-        return rows.map(x=>({kind:'ordin', name:(x.자치법규명||'').trim(), id:(x.자치법규ID||'').trim(), mst:(x.자치법규일련번호||'').trim(), org:(x.지자체명||x.지자체기관명||'').trim(), status:(x.자치법규상태||'').trim()}));
+        return rows.map(x=>{
+          const name  = (x.자치법규명||x.자치법규명한글||x.자치법규명국문||'').trim();
+          const id    = (x.자치법규ID||x.ID||'').trim();
+          const mst   = (x.자치법규일련번호||x.MST||'').trim();
+          const org   = (x.지자체명||x.지자체기관명||'').trim();
+          const status= (x.자치법규상태||x.자치법규상태명||x.상태||'').trim();
+          return { kind:'ordin', name, id, mst, org, status };
+        });
       }catch(_){ return null; }
     }
     async function x(){
@@ -287,7 +293,12 @@
         var list=[].slice.call(dom.getElementsByTagName('ordin'));
         return list.map(n=>{
           var g=(tag)=>{var el=n.getElementsByTagName(tag)[0]; return el? (el.textContent||'').trim() : ''};
-          return {kind:'ordin', name:g('자치법규명'), id:g('자치법규ID'), mst:g('자치법규일련번호'), org:(g('지자체명')||g('지자체기관명')), status:g('자치법규상태')};
+          const name  = g('자치법규명') || g('자치법규명한글') || g('자치법규명국문');
+          const id    = g('자치법규ID') || g('ID');
+          const mst   = g('자치법규일련번호') || g('MST');
+          const org   = g('지자체명') || g('지자체기관명');
+          const status= g('자치법규상태') || g('자치법규상태명') || g('상태');
+          return { kind:'ordin', name, id, mst, org, status };
         });
       }catch(_){ return null; }
     }
@@ -313,21 +324,28 @@
     return pick(arr2, false);
   }
 
+  // ==== 검색 순서: 이름에 ‘조례/규칙’ 있으면 ordin 먼저, 아니면 law 먼저
   async function searchLawRow(lawQuery){
     var refinedQ=refineLawName(lawQuery||''); if(!refinedQ) return null;
     if(lawIdCache.has(refinedQ)) return lawIdCache.get(refinedQ);
 
+    var hasOrdinHint = /(조례|규칙)\s*$/.test(refinedQ);
     var variants=generateAlternatives(lawQuery);
-    for(var i=0;i<variants.length;i++){
-      var q=variants[i];
-      // 1) 국가법령 (현행 우선, 폴백 허용)
-      var law = await tryLawSearchAll(q, q);
-      if(law){ lawIdCache.set(refinedQ,law); return law; }
-      // 2) 자치법규 (현행 우선, 폴백 허용)
-      var ord = await tryOrdinSearchAll(q, q);
-      if(ord){ lawIdCache.set(refinedQ,ord); return ord; }
+
+    async function tryOrder(first, second){
+      for(var i=0;i<variants.length;i++){
+        var q=variants[i];
+        var a = await first(q, q);
+        if(a){ lawIdCache.set(refinedQ,a); return a; }
+        var b = await second(q, q);
+        if(b){ lawIdCache.set(refinedQ,b); return b; }
+      }
+      return null;
     }
-    return null;
+
+    return hasOrdinHint
+      ? (await tryOrder(tryOrdinSearchAll, tryLawSearchAll))
+      : (await tryOrder(tryLawSearchAll, tryOrdinSearchAll));
   }
 
   /* ===== Extraction ===== */
@@ -623,7 +641,7 @@
           });
         }
       }else{
-        // 끝까지 못 찾으면 국가법령 공개페이지로만 폴백(자치법규는 일괄 공개페이지가 달라 안전 폴백 어려움)
+        // 마지막 폴백: 국가법령 공개페이지(자치법규는 일괄 공개 URL이 부정확해 스킵)
         var fullURL=publicLawURL(lawName);
         appendResult(resUl,{
           kind:'law',
