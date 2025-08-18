@@ -18,10 +18,8 @@
   .card.pad{padding:16px}
   .grid{display:grid;grid-template-columns:1fr 360px;gap:16px}
   @media (max-width: 900px){ .grid{grid-template-columns:1fr} }
-
   textarea{width:100%;min-height:120px;height:140px;padding:12px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--txt);resize:vertical;box-sizing:border-box;line-height:1.45;}
   textarea:focus{outline:none;box-shadow:0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent)}
-
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .label{font-weight:600;color:var(--txt-muted);font-size:.92rem}
   input[type="text"]{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--txt);min-width:260px}
@@ -33,7 +31,6 @@
   .badge{display:inline-flex;gap:6px;align-items:center;padding:2px 8px;border-radius:999px;background:color-mix(in oklab, var(--accent) 14%, transparent);color:var(--accent-2);border:1px solid var(--line);font-size:.8rem}
   .result{margin-top:18px}
   .result h2{margin:0 0 8px;font-size:1.05rem}
-
   ol{margin:0;padding-left:20px}
   .item{padding:10px 8px;border-top:1px dashed var(--line)}
   .item-line{display:flex;align-items:center;gap:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -42,7 +39,6 @@
   .links{display:flex;gap:10px;flex:0 0 auto}
   .links a,.links button{color:var(--accent-2);text-decoration:none;border:1px dashed color-mix(in oklab, var(--accent) 30%, transparent);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;font-size:.86rem;}
   .links a:hover,.links button:hover{text-decoration:underline}
-
   .mini{font-size:.86rem;color:var(--txt-muted)}
   .right{margin-left:auto}
   .toast{position:fixed;right:18px;bottom:18px;display:none;z-index:50}
@@ -52,7 +48,6 @@
   @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
   .sk-line{height:14px;border-radius:6px;opacity:.45}
   .sk-gap{height:10px}
-
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:100}
   .modal.on{display:flex}
   .modal .panel{max-width:840px;max-height:80vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px}
@@ -73,7 +68,7 @@
       <h1>법조문 자동 추출·검색</h1>
       <div class="sub">본문에서 <b>법령/자치법규</b>를 찾아 <b>조문 미리보기</b>와 <b>전체 본문</b> 링크를 제공합니다. <span class="mini">현행 우선, 없으면 비현행·공개검색까지 폴백</span></div>
     </div>
-    <div class="badge">OC: bro3362 · 2025-08-18 r4</div>
+    <div class="badge">OC: bro3362</div>
   </header>
 
   <div class="grid">
@@ -112,7 +107,7 @@
 </div>
 
 <script>
-/* =============== 공통 유틸 =============== */
+/* ================= 공통 유틸 ================= */
 var DRF='https://www.law.go.kr/DRF';
 var OC='bro3362';
 var $=sel=>document.querySelector(sel);
@@ -145,7 +140,7 @@ async function fetchTextDirectOrProxy(url,opts){
   }).catch(()=>'')));
 }
 
-/* =============== 정규화/보조 =============== */
+/* ================= 정규화/보조 ================= */
 var canonName=s=>(s||'').replace(/[\s"“”'‘’\[\]\(\)「」]/g,'').replace(/[·ㆍ]/g,'');
 var displayName=s=>(s||'').replace(/["“”'‘’\[\]\(\)「」]/g,'').trim();
 function refineLawName(name){
@@ -163,7 +158,7 @@ function refineLawName(name){
 }
 var isCurrent = v=>/현행/u.test((v||'').trim());
 
-/* =============== 국가법령 검색(법) =============== */
+/* ================= 국가법령 검색(법) ================= */
 async function tryLawSearchAll(qCanon,qRaw){
   function clean(s){return canonName(refineLawName(s||''))}
   function pick(rows,preferCurrent){
@@ -293,7 +288,7 @@ async function tryOrdinSearchAll(qCanon,qRaw){
   return pick(arr2, false);
 }
 
-/* =============== 추출기(브라우저 안전형) =============== */
+/* ================= 추출기(브라우저 안전형) ================= */
 (function(){
   'use strict';
   var D='\\d+'; var JO='제\\s*('+D+')\\s*조(?:\\s*의\\s*('+D+'))?'; var HANG='(?:\\s*제?\\s*('+D+')\\s*항)?';
@@ -321,7 +316,7 @@ async function tryOrdinSearchAll(qCanon,qRaw){
   };
 })();
 
-/* =============== 분류/라우팅 =============== */
+/* ================= 분류/라우팅 ================= */
 function classifyKind(name){
   const s=(name||'').trim();
   if (/(조례|규칙)\s*(시행규칙)?$/u.test(s)) return 'ordin';
@@ -340,10 +335,10 @@ async function searchOneCitation(it){
   return {row, kind, cite:it};
 }
 
-/* =============== 미리보기 렌더 =============== */
+/* ================= 미리보기 렌더/조례 조문 픽 ================= */
 function sanitize(html){return (html||'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')}
 
-/** 조례 전체 XML에서 특정 조문을 찾아 미리보기 HTML을 생성 */
+/** 조례 XML에서 특정 조문을 찾아 미리보기 HTML을 생성 (ID, MST 모두 시도) */
 async function fetchOrdinAndPickTry(id, mst, jo){
   const build = (key,val)=>buildURL('/lawService.do', {OC:OC,target:'ordin',type:'XML',[key]:val});
   const targets = [];
@@ -354,16 +349,15 @@ async function fetchOrdinAndPickTry(id, mst, jo){
   for (const t of targets){
     try{
       const xmlText = await fetchTextDirectOrProxy(build(t.k, t.v));
-      if(!xmlText) { lastErr = new Error('empty xml'); continue; }
+      if(!xmlText){ lastErr = new Error('empty xml'); continue; }
       const dom = new DOMParser().parseFromString(xmlText,'text/xml');
       const nodes=[].slice.call(dom.getElementsByTagName('조문'));
       if(!nodes.length){ lastErr = new Error('no articles'); continue; }
 
-      // 조문번호 정규화: "제 2 조", "제2조", "제2조의2" 등을 모두 허용
       const want = String(parseInt(jo,10));
       const matchArticle = n=>{
         const raw=(n.getElementsByTagName('조문번호')[0]||{}).textContent||'';
-        const norm=raw.replace(/\s+/g,'').replace(/제/,'').replace(/조.*/,''); // "제2조", "제2조의2" -> "2"
+        const norm=raw.replace(/\s+/g,'').replace(/^제/,'').replace(/조.*/,'');
         return norm===want;
       };
       const target = nodes.find(matchArticle) || nodes[0];
@@ -403,9 +397,9 @@ async function fetchArticleXML(urlXML){
     const title=get('조문제목')||'';
     const articleBodyRaw=get('조문내용')||'';
     const hangs=[].slice.call(dom.getElementsByTagName('항')).map(function(h){
-      var hTitle=(h.getElementsByTagName('항내용')[0]||{}).textContent; hTitle=hTitle? hTitle.trim():'';
+      var hTitle=(h.getElementsByTagName('항내용')[0]||{}).textContent; hTitle=hTitle? hTitle.trim():''; 
       var hos=[].slice.call(h.getElementsByTagName('호')).map(function(ho){
-        var hoText=(ho.getElementsByTagName('호내용')[0]||{}).textContent; hoText=hoText? hoText.trim():'';
+        var hoText=(ho.getElementsByTagName('호내용')[0]||{}).textContent; hoText=hoText? hoText.trim():''; 
         var moks=[].slice.call(ho.getElementsByTagName('목')).map(function(m){return (m.textContent||'').trim()});
         return {hoText:hoText, moks:moks};
       });
@@ -441,7 +435,7 @@ function renderArticlePreview(opts){
   if(modal) modal.classList.add('on');
 }
 
-/* =============== UI 도우미 =============== */
+/* ================= UI 도우미 ================= */
 function toast(msg,ms){ms=ms||2200; var el=$('#toast'); var t=$('#toastMsg'); if(t) t.textContent=msg; if(el){ el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),ms)}}
 function skeleton(n){n=n||2; var arr=[]; for(var i=0;i<n;i++){arr.push('<li class="item"><div class="sk-line skeleton" style="width:58%"></div><div class="sk-gap"></div><div class="sk-line skeleton" style="width:32%"></div></li>')} return arr.join('')}
 function appendResult(listEl, payload){
@@ -465,7 +459,6 @@ function appendResult(listEl, payload){
       +'<span class="links">'+linkHtml+'</span>'
     +'</div>';
 
-  // 링크/미리보기 바인딩(항목 단위 예외 방어)
   try{
     if(joText){
       if(kind==='law'){
@@ -491,13 +484,10 @@ function appendResult(listEl, payload){
               var xmlURL=buildLawArticleXMLURL(lawId, joText);
               data=await fetchArticleXML(xmlURL);
             }else{
-              // 조례: ID와 MST 모두 시도(강화)
-              const idOrMst = lawId || mst || '';
               const pickRes = await fetchOrdinAndPickTry(lawId||'', mst||'', joText.jo || 1);
-              if (pickRes.ok) data = pickRes.data;
-              else data = null;
+              data = pickRes.ok ? pickRes.data : null;
             }
-            if(!data){ toast('조문 전문을 불러오지 못했습니다. 자치법규 전체에서 확인해 주세요.'); }
+            if(!data){ toast('조문 전문을 불러오지 못했습니다.'); }
             else{ var joLabel=title.replace(lawName,'').trim(); renderArticlePreview({lawName:lawName, joLabel:joLabel, data:data}); }
           }catch(e){ console.error(e); toast('미리보기 중 오류가 발생했습니다.'); }
           finally { btn.disabled=false; btn.textContent=(kind==='law'?'조문 미리보기':'조문 미리보기(조례)'); }
@@ -511,7 +501,7 @@ function appendResult(listEl, payload){
   listEl.appendChild(li);
 }
 
-/* =============== 실행(run) =============== */
+/* ================= 실행(run) ================= */
 async function run(){
   var input=$('#input'); var resUl=$('#resList');
   if(resUl) resUl.innerHTML='';
@@ -526,11 +516,10 @@ async function run(){
       return;
     }
 
-    // 병렬 검색
+    // 병렬 검색 & 결과 모두 출력
     var results=await Promise.allSettled(cites.map(searchOneCitation));
     if(resUl) resUl.innerHTML='';
 
-    // 항목 단위 예외 방어 렌더링
     for(const st of results){
       try{
         if(st.status!=='fulfilled') continue;
@@ -554,7 +543,6 @@ async function run(){
         }
       }catch(itemErr){
         console.error('render item error:', itemErr);
-        // 한 항목이 실패해도 다른 항목은 계속
       }
     }
   }catch(e){
