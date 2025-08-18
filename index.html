@@ -123,14 +123,14 @@ var buildURL=(p,params)=>{var u=new URL(DRF+p); Object.keys(params).forEach(k=>{
 var withProxy=(url,base)=>{var b=(base||'https://law-proxy.hyok96.workers.dev/?url=').trim(); if(b.indexOf('?')===-1) b+=(b.endsWith('/')?'':'/')+'?'; if(!/\burl=/.test(b)) b+='url='; return b+encodeURIComponent(url)};
 var isFailPage=html=>/페이지\s*접속에\s*실패하였습니다|사용자인증에\s*실패하였습니다|페이지를\s*찾을\s*수\s*없습니다/.test((html||'').replace(/\u00A0/g,' '));
 var publicLawURL=name=>'https://www.law.go.kr/법령/'+enc(name);
-var publicOrdinSearchURL=q=>'https://www.law.go.kr/ordinSc.do?menuId=3&subMenuId=27&tabMenuId=139&query='+enc(q));
+var publicOrdinSearchURL = q => 'https://www.law.go.kr/ordinSc.do?menuId=3&subMenuId=27&tabMenuId=139&query=' + enc(q);
 var buildLawFullHTMLURL=id=>buildURL('/lawService.do',{OC:OC,target:'law',type:'HTML',ID:id});
 var buildOrdinFullHTMLURL=(id,mst)=>{var p={OC:OC,target:'ordin',type:'HTML'}; if(mst) p.MST=mst; else if(id) p.ID=id; return buildURL('/lawService.do',p)};
 var joTo6=(jo,joi)=>{var h=pad(jo,4);return joi?h+pad(joi,2):h+'00'};
 var buildLawArticleURL=(id,obj)=>{var JO=joTo6(obj.jo,obj.joi); var HANG=(obj.hang?pad(obj.hang,6):(obj.ho?'000000':'')); var HO=(obj.ho?pad(obj.ho,6):''); var MOK=(obj.mok?String(obj.mok).trim().slice(0,1).replace(/[^가-힣]/u,''):''); var p={OC:OC,target:'lawjosub',type:'HTML',ID:id,JO:JO}; if(HANG)p.HANG=HANG; if(HO)p.HO=HO; if(MOK)p.MOK=MOK; return buildURL('/lawService.do',p)};
 var buildLawArticleXMLURL=(id,obj)=>{var JO=joTo6(obj.jo,obj.joi); var HANG=(obj.hang?pad(obj.hang,6):(obj.ho?'000000':'')); var HO=(obj.ho?pad(obj.ho,6):''); var MOK=(obj.mok?String(obj.mok).trim().slice(0,1).replace(/[^가-힣]/u,''):''); var p={OC:OC,target:'lawjosub',type:'XML',ID:id,JO:JO}; if(HANG)p.HANG=HANG; if(HO)p.HO=HO; if(MOK)p.MOK=MOK; return buildURL('/lawService.do',p)};
 
-/* 🔧 문법 오류 수정: 안전한 try/catch 버전 */
+/* 안전한 네트워킹: 직접 요청 → 실패 시 프록시 폴백 */
 async function fetchTextDirectOrProxy(url, opts) {
   opts = opts || {};
   const timeoutMs = opts.timeoutMs || 9000;
@@ -143,7 +143,6 @@ async function fetchTextDirectOrProxy(url, opts) {
   };
 
   try {
-    // 1차: 직접 요청
     const r = await fetchWithTimeout(url);
     if (r.ok) {
       const t = await r.text();
@@ -153,7 +152,6 @@ async function fetchTextDirectOrProxy(url, opts) {
     throw new Error('direct fail');
   } catch (_) {
     try {
-      // 2차: 프록시로 재시도
       const r2 = await fetchWithTimeout(withProxy(url, proxyBase()));
       if (r2.ok) {
         const t2 = await r2.text();
@@ -185,7 +183,7 @@ function refineLawName(name){
 }
 var isCurrent = v=>/현행/u.test((v||'').trim());
 
-/* =============== 국가법령 검색(법) =============== */
+/* =============== 국가법령 검색 =============== */
 async function tryLawSearchAll(qCanon,qRaw){
   function clean(s){return canonName(refineLawName(s||''))}
   function pick(rows,preferCurrent){
@@ -241,7 +239,7 @@ async function tryLawSearchAll(qCanon,qRaw){
   return pick(arr2, false);
 }
 
-/* =============== 자치법규 검색(조례/규칙) — 경기도교육청 우선 =============== */
+/* =============== 자치법규 검색(경기도교육청 우선) =============== */
 async function tryOrdinSearchAll(qCanon,qRaw){
   function score(row,want){
     var s=0;
@@ -315,7 +313,7 @@ async function tryOrdinSearchAll(qCanon,qRaw){
   return pick(arr2, false);
 }
 
-/* =============== 추출기(브라우저 안전형) =============== */
+/* =============== 추출기 =============== */
 (function(){
   'use strict';
   var D='\\d+'; var JO='제\\s*('+D+')\\s*조(?:\\s*의\\s*('+D+'))?'; var HANG='(?:\\s*제?\\s*('+D+')\\s*항)?';
@@ -418,7 +416,7 @@ function renderArticlePreview(opts){
       if(h.hos && h.hos.length){
         h.hos.forEach(function(ho){
           if(ho.hoText) parts.push('<div class="ho">'+ sanitize(ho.hoText)+'</div>');
-          if(ho.moks && ho.moks.length){
+          if(ho.moks && h.moks.length){
             ho.moks.forEach(function(mk){ parts.push('<div class="mok">'+ sanitize(mk)+'</div>'); });
           }
         });
@@ -485,7 +483,7 @@ function appendResult(listEl, payload){
 
 /* =============== 실행(run) =============== */
 async function run(){
-  var input=$('#input'); var resUl=$('#resList');
+  var input=$('#input'); var resUl=$('#resList']);
   try{
     if(resUl) resUl.innerHTML='';
     var text=input? (input.value||'') : '';
