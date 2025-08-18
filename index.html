@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>법조문 자동 추출·검색 (정확도 개선 v2)</title>
+<title>법조문 자동 추출·검색 (정확도 개선 v2 · 조례 지원)</title>
 <style>
   :root{--bg:#0b1020; --panel:#0f152b; --muted:#8ea0c7; --line:#1c2748; --accent:#78a6ff; --accent-2:#9ec1ff; --txt:#eaf1ff; --txt-muted:#aab9dd; --radius:14px; --shadow:0 10px 28px rgba(0,0,0,.32)}
   @media (prefers-color-scheme: light){ :root{ --bg:#f5f7ff; --panel:#fff; --muted:#596180; --line:#e6eaff; --accent:#2e5cff; --accent-2:#4c78ff; --txt:#0c1330; --txt-muted:#5e6a8a; --shadow:0 8px 20px rgba(15,23,52,.08)} }
@@ -18,22 +18,8 @@
   .card.pad{padding:16px}
   .grid{display:grid;grid-template-columns:1fr 360px;gap:16px}
   @media (max-width: 900px){ .grid{grid-template-columns:1fr} }
-
-  textarea{
-    width:100%;
-    min-height:120px;
-    height:140px;
-    padding:12px;
-    border-radius:12px;
-    border:1px solid var(--line);
-    background:transparent;
-    color:var(--txt);
-    resize:vertical;
-    box-sizing:border-box;
-    line-height:1.45;
-  }
+  textarea{width:100%;min-height:120px;height:140px;padding:12px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--txt);resize:vertical;box-sizing:border-box;line-height:1.45}
   textarea:focus{outline:none;box-shadow:0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent)}
-
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .label{font-weight:600;color:var(--txt-muted);font-size:.92rem}
   input[type="text"]{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--txt);min-width:260px}
@@ -45,32 +31,14 @@
   .badge{display:inline-flex;gap:6px;align-items:center;padding:2px 8px;border-radius:999px;background:color-mix(in oklab, var(--accent) 14%, transparent);color:var(--accent-2);border:1px solid var(--line);font-size:.8rem}
   .result{margin-top:18px}
   .result h2{margin:0 0 8px;font-size:1.05rem}
-
   ol{margin:0;padding-left:20px}
   .item{padding:10px 8px;border-top:1px dashed var(--line)}
-  .item-line{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
+  .item-line{display:flex;align-items:center;gap:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .t{font-weight:700;flex:0 0 auto}
   .meta{font-size:.86rem;color:var(--txt-muted);flex:0 0 auto}
   .links{display:flex;gap:10px;flex:0 0 auto}
-  .links a,.links button{
-    color:var(--accent-2);
-    text-decoration:none;
-    border:1px dashed color-mix(in oklab, var(--accent) 30%, transparent);
-    background:transparent;
-    border-radius:8px;
-    padding:4px 8px;
-    cursor:pointer;
-    font-size:.86rem;
-  }
+  .links a,.links button{color:var(--accent-2);text-decoration:none;border:1px dashed color-mix(in oklab, var(--accent) 30%, transparent);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;font-size:.86rem}
   .links a:hover,.links button:hover{text-decoration:underline}
-
   .mini{font-size:.86rem;color:var(--txt-muted)}
   .right{margin-left:auto}
   .toast{position:fixed;right:18px;bottom:18px;display:none;z-index:50}
@@ -80,7 +48,6 @@
   @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
   .sk-line{height:14px;border-radius:6px;opacity:.45}
   .sk-gap{height:10px}
-
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:100}
   .modal.on{display:flex}
   .modal .panel{max-width:840px;max-height:80vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px}
@@ -91,12 +58,7 @@
   .article-body .ho{margin-left:24px}
   .article-body .mok{margin-left:36px}
   .article-body b{color:var(--accent-2)}
-
-  .article-body .hang > b,
-  .article-body .ho > b,
-  .article-body .mok > b{
-    display:none !important;
-  }
+  .article-body .hang>b,.article-body .ho>b,.article-body .mok>b{display:none!important}
 </style>
 </head>
 <body>
@@ -104,7 +66,7 @@
   <header>
     <div class="title">
       <h1>법조문 자동 추출·검색</h1>
-      <div class="sub">본문에서 법령·조문을 찾아 <b>조문 바로가기</b>와 <b>전체 본문</b> 링크만 제공합니다. <span class="mini">(같은법/동법 류는 제외)</span></div>
+      <div class="sub">본문에서 <b>법령/자치법규</b>를 찾아 <b>조문 미리보기</b>, <b>조문 바로가기</b>, <b>전체 본문</b> 링크를 제공합니다.</div>
     </div>
     <div class="badge">OC: bro3362</div>
   </header>
@@ -112,7 +74,7 @@
   <div class="grid">
     <section class="card pad">
       <div class="row" style="margin-bottom:8px"><div class="label">본문 입력</div></div>
-      <textarea id="input" placeholder="예) 조례는 「사립학교법」 제43조에 따라 …"></textarea>
+      <textarea id="input" placeholder="예) 「경기도교육청 공유재산 관리 조례」 제14조의2, 「사립학교법」 제43조 …"></textarea>
       <div class="row" style="margin-top:10px">
         <button id="run" class="btn" type="button">추출·검색</button>
         <button id="clear" class="btn secondary" type="button">지우기</button>
@@ -136,7 +98,7 @@
 
 <div id="toast" class="toast"><div class="box mini" id="toastMsg">안내</div></div>
 
-<div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+<div id="modal" class="modal" role="dialog" aria-modal="true" id="mdl">
   <div class="panel">
     <button class="close" id="modalClose" title="닫기" type="button">✕</button>
     <h3 id="modalTitle">조문 전문</h3>
@@ -147,375 +109,404 @@
 <script>
 (function(){
   'use strict';
-  /* ===== Core ===== */
+
+  /* ===== 공통 ===== */
   var DRF='https://www.law.go.kr/DRF';
   var OC='bro3362';
   var $=function(sel){return document.querySelector(sel)};
   var enc=function(s){return encodeURIComponent(s)};
   var pad=function(n,w){return String(parseInt(n,10)).padStart(w,'0')};
-  var proxyBase=function(){var pv=$('#proxy'); var v=pv && pv.value ? pv.value.trim() : 'https://law-proxy.hyok96.workers.dev/?url='; return v};
+  var proxyBase=function(){var pv=$('#proxy'); return (pv && pv.value ? pv.value.trim() : 'https://law-proxy.hyok96.workers.dev/?url=')};
   var buildURL=function(p,params){var u=new URL(DRF+p); Object.keys(params).forEach(function(k){var v=params[k]; if(v!=null&&v!=='') u.searchParams.set(k,v)}); return u.toString()};
   var withProxy=function(url,base){var b=(base||'https://law-proxy.hyok96.workers.dev/?url=').trim(); if(b.indexOf('?')===-1) b+=(b.endsWith('/')?'':'/')+'?'; if(!/\burl=/.test(b)) b+='url='; return b+encodeURIComponent(url)};
-  var lawIdCache=new Map();
+  var isFailPage=function(html){return /페이지\s*접속에\s*실패하였습니다|사용자인증에\s*실패하였습니다|페이지를\s*찾을\s*수\s*없습니다/.test((html||'').replace(/\u00A0/g,' '))};
 
   function fetchTextDirectOrProxy(url,opts){
-    opts=opts||{}; var timeoutMs=opts.timeoutMs||7000;
+    opts=opts||{}; var timeoutMs=opts.timeoutMs||9000;
     var fetchWithTimeout=function(u){
       var ac=new AbortController(); var id=setTimeout(function(){ac.abort()},timeoutMs);
-      return fetch(u,{signal:ac.signal}).finally(function(){clearTimeout(id)});
+      return fetch(u,{signal:ac.signal,credentials:'omit'}).finally(function(){clearTimeout(id)});
     };
     return fetchWithTimeout(url).then(async function(r){
-      if(r.ok){
-        var t=await r.text();
-        var ct=(r.headers.get('content-type')||'');
-        if(ct.indexOf('json')>-1 || t.length>30) return t;
-      }
+      if(r.ok){ var t=await r.text(); var ct=(r.headers.get('content-type')||''); if(ct.indexOf('json')>-1 || t.length>30){ return t; } }
       throw new Error('direct fail');
     }).catch(function(){
       return fetchWithTimeout(withProxy(url,proxyBase())).then(async function(r2){
-        if(r2.ok){
-          var t2=await r2.text();
-          var ct2=(r2.headers.get('content-type')||'');
-          if(ct2.indexOf('json')>-1 || t2.length>30) return t2;
-        }
+        if(r2.ok){ var t2=await r2.text(); var ct2=(r2.headers.get('content-type')||''); if(ct2.indexOf('json')>-1 || t2.length>30){ return t2; } }
         return '';
       }).catch(function(){return ''});
     });
   }
 
-  var isFailPage=function(html){return /페이지\s*접속에\s*실패하였습니다|사용자인증에\s*실패하였습니다|페이지를\s*찾을\s*수\s*없습니다/.test((html||'').replace(/\u00A0/g,' '))};
+  /* ===== 공개페이지 바로가기 빌더 ===== */
   var publicLawURL=function(name){return 'https://www.law.go.kr/법령/'+enc(name)};
+  var publicOrdinSearchURL=function(q){return 'https://www.law.go.kr/ordinSc.do?menuId=3&subMenuId=27&tabMenuId=139&query='+enc(q)};
+
+  /* ===== DRF(법령/자치법규) 개별 링크 ===== */
   var buildLawFullHTMLURL=function(id){return buildURL('/lawService.do',{OC:OC,target:'law',type:'HTML',ID:id})};
+  var buildOrdinFullHTMLURL=function(id,mst){var p={OC:OC,target:'ordin',type:'HTML'}; if(mst){p.MST=mst}else if(id){p.ID=id} return buildURL('/lawService.do',p)};
+
+  /* ===== 조문 단위 링크 ===== */
   var joTo6=function(jo,joi){var h=pad(jo,4);return joi?h+pad(joi,2):h+'00'};
   var buildLawArticleURL=function(id,obj){
     var JO=joTo6(obj.jo,obj.joi);
-    var HANG=(obj.hang?pad(obj.hang,6):(obj.ho?'000000':''));
-    var HO=(obj.ho?pad(obj.ho,6):'');
-    var MOK=(obj.mok?String(obj.mok).trim().slice(0,1).replace(/[^가-하]/g,''):'');
+    var HANG=(obj.hang?pad(obj.hang,6):(obj.ho?'000000':'')); var HO=(obj.ho?pad(obj.ho,6):'');
+    var MOK=(obj.mok?String(obj.mok).trim().slice(0,1).replace(/[^가-힣]/u,''):'');
     var p={OC:OC,target:'lawjosub',type:'HTML',ID:id,JO:JO};
-    if(HANG)p.HANG=HANG; if(HO)p.HO=HO; if(MOK)p.MOK=MOK;
-    return buildURL('/lawService.do',p);
+    if(HANG)p.HANG=HANG; if(HO)p.HO=HO; if(MOK)p.MOK=MOK; return buildURL('/lawService.do',p);
   };
   var buildLawArticleXMLURL=function(id,obj){
     var JO=joTo6(obj.jo,obj.joi);
-    var HANG=(obj.hang?pad(obj.hang,6):(obj.ho?'000000':''));
-    var HO=(obj.ho?pad(obj.ho,6):'');
-    var MOK=(obj.mok?String(obj.mok).trim().slice(0,1).replace(/[^가-하]/g,''):'');
+    var HANG=(obj.hang?pad(obj.hang,6):(obj.ho?'000000':'')); var HO=(obj.ho?pad(obj.ho,6):'');
+    var MOK=(obj.mok?String(obj.mok).trim().slice(0,1).replace(/[^가-힣]/u,''):'');
     var p={OC:OC,target:'lawjosub',type:'XML',ID:id,JO:JO};
-    if(HANG)p.HANG=HANG; if(HO)p.HO=HO; if(MOK)p.MOK=MOK;
-    return buildURL('/lawService.do',p);
+    if(HANG)p.HANG=HANG; if(HO)p.HO=HO; if(MOK)p.MOK=MOK; return buildURL('/lawService.do',p);
+  };
+  /* 조례 조문 직링크(공개페이지): joNo=0014000002 형태 */
+  var buildOrdinDirectJoNo=function(jo,joi){ return pad(jo,4)+'0000'+(joi?pad(joi,2):'00') };
+  var buildOrdinDirectArticleURL=function(ordinId, jo, joi){
+    return 'https://www.law.go.kr/LSW/ordinLinkProc.do?joNo='+buildOrdinDirectJoNo(jo,joi)+'&mode=4&ordinId='+encodeURIComponent(ordinId)+'&lnkGubun=ordin';
   };
 
-  /* ===== Normalize & Search ===== */
+  /* ===== 이름 정리/분류 ===== */
   var canonName=function(s){return (s||'').replace(/[\s"“”'‘’\[\]\(\)「」]/g,'').replace(/[·ㆍ]/g,'')};
   var displayName=function(s){return (s||'').replace(/["“”'‘’\[\]\(\)「」]/g,'').trim()};
   function refineLawName(name){
     var s=(name||'').trim(); if(!s) return s;
     s=s.replace(/^(?:까지|및|또는|등|관련|관한|따른|에\s*따른|에\s*의한|의)\s+/, '');
-    var m=s.match(/^(.*?법(?:률)?)(?:\s*)?(시행령|시행규칙)$/);
-    if(m) return (m[1]+' '+m[2]).trim();
-    var toks=s.split(/\s+/); var i=-1;
-    for(var k=toks.length-1;k>=0;k--){ if(/[법]$/.test(toks[k])){ i=k; break; } }
-    if(i>=0){
-      if(toks[i+1] && /^(시행령|시행규칙)$/.test(toks[i+1])) return (toks[i]+' '+toks[i+1]).trim();
-      return toks[i];
-    }
+    var m=s.match(/^(.*?)(법(?:률)?|조례|규칙)(?:\s*)?(시행령|시행규칙)?$/u);
+    if(m){ return (m[1]+m[2]+' '+(m[3]||'')).trim() }
     return s;
   }
-  function generateAlternatives(q){
-    var s=displayName(q||'').replace(/\s+/g,'').trim();
-    var alts=new Set();
-    if(/^영유아교육법$/.test(s)){alts.add('유아교육법');alts.add('영유아보육법')}
-    if(s) alts.add(s.replace(/[^가-힣A-Za-z0-9]/g,''));
-    if(s.indexOf('교육')>-1) alts.add(s.replace(/교육/g,'보육'));
-    if(s.indexOf('보육')>-1) alts.add(s.replace(/보육/g,'교육'));
-    var refined=refineLawName(q); if(refined) alts.add(refined);
-    if(q) alts.add(q);
-    return Array.from(alts).filter(Boolean);
+  function classifyKind(name){
+    var s=(name||'').trim();
+    if(/(조례|규칙)(\s*시행규칙)?$/u.test(s)) return 'ordin';
+    if(/(법|법률)(\s*시행령|\s*시행규칙)?$/u.test(s)) return 'law';
+    if(/교육청|도청|시청|군청|구청|의회/u.test(s)) return 'ordin';
+    return 'law';
+  }
+  function isLikelyNormName(name){
+    var s=(name||'').trim();
+    if(!s) return false;
+    if(s==='법' || s==='법률' || s==='조례' || s==='규칙') return false;
+    if(/방법$/.test(s)) return false;
+    var isEO=/(시행령|시행규칙)$/.test(s);
+    var core=isEO? s.replace(/\s*(시행령|시행규칙)$/,'').trim() : s;
+    if(!/(법|법률|조례|규칙)$/.test(core)) return false;
+    var base=core.replace(/(법|법률|조례|규칙)$/,'');
+    return base.length>=1;
   }
 
-  async function searchLawRow(lawQuery){
-    var refinedQ=refineLawName(lawQuery||''); if(!refinedQ) return null;
-    if(lawIdCache.has(refinedQ)) return lawIdCache.get(refinedQ);
-    var variants=generateAlternatives(lawQuery);
-    var clean=function(s){return canonName(refineLawName(s||''))};
-    var wantsEO=/(시행령|시행규칙)$/.test(refinedQ)? refinedQ.match(/(시행령|시행규칙)$/)[1]:'';
-    var pickBest=function(rows,wantCanon){
-      if(!rows||!rows.length) return null;
-      if(wantsEO){
-        var eoExact=rows.find(function(x){return (/시행령|시행규칙/).test(x.법령명한글)&&clean(x.법령명한글)===wantCanon});
-        if(eoExact) return eoExact;
-        var eoSuffix=rows.find(function(x){return (x.법령명한글||'').trim().endsWith(wantsEO)});
-        if(eoSuffix) return eoSuffix;
-      }
-      var exact=rows.find(function(x){return clean(x.법령명한글)===wantCanon});
-      if(exact) return exact;
-      var partial=rows.find(function(x){var cx=clean(x.법령명한글); return cx.indexOf(wantCanon)>-1 || wantCanon.indexOf(cx)>-1});
-      return partial||rows[0];
-    };
-    async function tryJson(qCanon,qRaw){
-      var url=buildURL('/lawSearch.do',{OC:OC,target:'law',type:'JSON',query:qRaw,display:10});
-      var text=await fetchTextDirectOrProxy(url);
-      try{
-        var data=JSON.parse(text);
-        var root=data&&(data.LawSearch||data);
-        var rows=[];
-        if(root&&root.law){ rows=Array.isArray(root.law)?root.law:[root.law] }
-        return pickBest(rows,qCanon);
-      }catch(e){return null}
-    }
-    async function tryXml(qCanon,qRaw){
-      var url=buildURL('/lawSearch.do',{OC:OC,target:'law',type:'XML',query:qRaw,display:10});
-      var text=await fetchTextDirectOrProxy(url);
-      try{
-        var dom=new DOMParser().parseFromString(text,'text/xml');
-        var list=[].slice.call(dom.getElementsByTagName('law'));
-        var rows=list.map(function(n){
-          var get=function(tag){var el=n.getElementsByTagName(tag)[0]; return el? (el.textContent||'').trim() : ''};
-          return {법령명한글:get('법령명한글'), 법령ID:get('법령ID'), 법령일련번호:get('법령일련번호'), 법령상세링크:get('법령상세링크')};
-        });
-        return pickBest(rows,qCanon);
-      }catch(e){return null}
-    }
-    async function tryHtml(qCanon,qRaw){
-      var url=buildURL('/lawSearch.do',{OC:OC,target:'law',type:'HTML',query:qRaw,display:10});
-      var text=await fetchTextDirectOrProxy(url);
-      try{
-        var dom=new DOMParser().parseFromString(text,'text/html');
-        var rows=[].slice.call(dom.querySelectorAll('a[href*="ID="]')).map(function(a){
-          var href=a.getAttribute('href')||'';
-          var idMatch=href.match(/ID=([^&]+)/);
-          var name=(a.textContent||'').trim();
-          return {법령명한글:name, 법령ID:idMatch?decodeURIComponent(idMatch[1]):''};
-        }).filter(function(x){return x.법령ID});
-        return pickBest(rows,qCanon);
-      }catch(e){return null}
-    }
-
-    for(var i=0;i<variants.length;i++){
-      var q=variants[i]; var canon=clean(q);
-      var row=await tryJson(canon,q) || await tryXml(canon,q) || await tryHtml(canon,q);
-      if(row){ lawIdCache.set(refinedQ,row); return row; }
-    }
-    if(wantsEO){
-      var base=refinedQ.replace(/\s*(시행령|시행규칙)$/,'');
-      var forced=(base+' '+wantsEO).trim();
-      var canon2=clean(forced);
-      var row2=await tryJson(canon2,forced) || await tryXml(canon2,forced) || await tryHtml(canon2,forced);
-      if(row2){ lawIdCache.set(refinedQ,row2); return row2; }
-    }
-    return null;
-  }
-
-  /* ===== Extraction ===== */
+  /* ===== 추출기 (법/조례 겸용) ===== */
   function normalizeText(s){
-    return (s||'')
-      .replace(/[\u200B-\u200D\uFEFF]/g,'')
-      .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g,' ')
-      .replace(/[“”]/g,'"').replace(/[‘’]/g,"'")
-      .replace(/[『「]/g,'«').replace(/[』」]/g,'»')
-      .replace(/\s+/g,' ')
-      .trim();
+    return (s||'').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g,' ').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[『「]/g,'«').replace(/[』」]/g,'»').replace(/\s+/g,' ').trim();
   }
-
-  // 법명 패턴
-  var LAW_BASE='[가-힣A-Za-z0-9·ㆍ\\s]+?(?:법|법률)';
-  var LAW_EO='(?:시행령|시행규칙)';
-  var NAME_GROUP='('+LAW_BASE+'(?:\\s*'+LAW_EO+')?)';
-
   var D='\\d+';
+  var NAME_CORE='[가-힣A-Za-z0-9·ㆍ\\s]+?(?:법|법률|조례|규칙)';
+  var NAME_GROUP='('+NAME_CORE+'(?:\\s*(?:시행령|시행규칙))?)';
   var JO='제\\s*('+D+')\\s*조(?:\\s*의\\s*('+D+'))?';
   var HANG='(?:\\s*제?\\s*('+D+')\\s*항)?';
   var HO='(?:\\s*제?\\s*('+D+')\\s*호)?';
-  var MOK='(?:\\s*([가-하])\\s*목)?';
-
-  // 인용부호 + 조문
+  var MOK='(?:\\s*([가-힣])\\s*목)?';
   var QUOTED_ANY=new RegExp('[«"\']\\s*'+NAME_GROUP+'\\s*[»"\']\\s*'+JO+HANG+HO+MOK,'g');
-  // 평문 + 조문
   var EXPL_RE=new RegExp(NAME_GROUP+'\\s*'+JO+HANG+HO+MOK,'g');
-  // ★ 이름만 있는 경우: 앞뒤 경계가 있을 때만, 그리고 뒤에 "제..조"가 바로 오지 않을 때만
   var NAME_ONLY_RE=new RegExp('(?:^|[\\s\\(\\[\\{«「"“\'])'+NAME_GROUP+'(?!\\s*제\\s*'+D+'\\s*조)(?=$|[\\s\\)\\]\\}»」"”\'.,;:!?])','g');
-
   var skipCtx=function(n){var s=(n||'').replace(/\s+/g,'');return s==='같은법'||s==='동법'||s==='같은법시행령'||s==='동법시행령'||s==='같은법시행규칙'||s==='동법시행규칙'};
-
-  // ★ 법명 유효성 검사(오탐 필터)
-  function isLikelyLawName(name){
-    var s=(name||'').trim();
-    if(!s) return false;
-    // 불용어/일반명사 배제
-    if(s==='법' || s==='법률') return false;
-    if(/방법$/.test(s)) return false; // 입찰방법/제출방법 등
-    if(/^(관련|관계|개정|현행|해당)\s*법$/.test(s)) return false;
-
-    // 시행령/시행규칙이 붙었는지 판별
-    var isEO=/(시행령|시행규칙)$/.test(s);
-    var core=isEO? s.replace(/\s*(시행령|시행규칙)$/,'').trim() : s;
-
-    // 기본: core가 '...법' 또는 '...법률'로 끝나야 함
-    if(!/(법|법률)$/.test(core)) return false;
-
-    // '법' 앞 글자 수(법/법률 제거 후)가 최소 1자(민법/상법 허용, '법' 단독 불허)
-    var base=core.replace(/(법|법률)$/,'');
-    if(base.length<1) return false;
-
-    return true;
-  }
 
   function extract(text){
     var src=normalizeText(text);
-    var list=[]; var seen=new Set();
-    var display=function(s){return (s||'').replace(/[\"“”'‘’\[\]\(\)「」«»]/g,'').trim()};
-
+    var out=[], seen=new Set();
     function push(nm,jo,joi,hang,ho,mok){
-      var name=refineLawName(display(nm));
-      if(!name||skipCtx(name)) return;
-      if(!isLikelyLawName(name)) return; // ★ 오탐 필터 적용
+      var name=refineLawName(displayName(nm));
+      if(!name||skipCtx(name)||!isLikelyNormName(name)) return;
       var key=[name,jo||'',joi||'',hang||'',ho||'',mok||''].join('|');
       if(seen.has(key)) return; seen.add(key);
-      list.push({name:name,jo:jo,joi:joi,hang:hang,ho:ho,mok:mok});
+      out.push({name:name, jo:jo, joi:joi, hang:hang, ho:ho, mok:mok});
     }
-
     var m;
     while((m=QUOTED_ANY.exec(src))){ push(m[1],m[2],m[3],m[4],m[5],m[6]); }
     while((m=EXPL_RE.exec(src))){ push(m[1],m[2],m[3],m[4],m[5],m[6]); }
     while((m=NAME_ONLY_RE.exec(src))){ push(m[1], null, null, null, null, null); }
-
-    // ★ 같은 법명이 조문과 함께/없이 중복되면: 조문 있는 항목만 남김
-    var namesWithArticle=new Set(list.filter(function(x){return !!x.jo}).map(function(x){return x.name}));
-    list=list.filter(function(x){
-      if(x.jo) return true;
-      return !namesWithArticle.has(x.name); // 법명만인 항목은 같은 법명의 조문 항목이 있으면 제거
-    });
-
-    // ★ 법명만 항목도 최종 중복 제거(동일 이름) — 위 seen 키로 대부분 처리되지만 안전차원
+    var withArticle=new Set(out.filter(function(x){return !!x.jo}).map(function(x){return x.name}));
+    out=out.filter(function(x){ return x.jo ? true : !withArticle.has(x.name) });
     var seenNameOnly=new Set();
-    list=list.filter(function(x){
-      if(x.jo) return true;
-      var k='nameonly|'+x.name;
-      if(seenNameOnly.has(k)) return false;
-      seenNameOnly.add(k);
-      return true;
-    });
-
-    return list;
+    out=out.filter(function(x){ if(x.jo) return true; var k='nameonly|'+x.name; if(seenNameOnly.has(k)) return false; seenNameOnly.add(k); return true; });
+    return out;
   }
 
-  /* ===== UI helpers ===== */
-  function toast(msg,ms){ms=ms||2000; var el=$('#toast'); var t=$('#toastMsg'); if(t) t.textContent=msg; if(el){ el.classList.add('on'); setTimeout(function(){el.classList.remove('on')},ms)}}
-  function skeleton(n){n=n||2; var arr=[]; for(var i=0;i<n;i++){arr.push('<li class="item"><div class="sk-line skeleton" style="width:58%"></div><div class="sk-gap"></div><div class="sk-line skeleton" style="width:32%"></div></li>')} return arr.join('')}
-  var sanitize=function(html){return (html||'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')};
+  /* ===== 검색(법/자치법규) ===== */
+  var lawIdCache=new Map();
+  var ordinCache=new Map();
 
-  /* ===== Article preview (modal) ===== */
-  async function fetchArticleXML(urlXML){
-    var xmlText=await fetchTextDirectOrProxy(urlXML);
-    if(!xmlText) return null;
-    var dom;
-    try{ dom=new DOMParser().parseFromString(xmlText,'text/xml'); }catch(e){ return null; }
-    var get=function(tag,node){node=node||dom; var el=node.getElementsByTagName(tag)[0]; return el? (el.textContent||'').trim() : ''};
-    var title=get('조문제목')||'';
-    var articleBodyRaw=get('조문내용')||'';
-    var hangs=[].slice.call(dom.getElementsByTagName('항')).map(function(h){
-      var hTitle=(h.getElementsByTagName('항내용')[0]||{}).textContent; hTitle=hTitle? hTitle.trim():'';
-      var hos=[].slice.call(h.getElementsByTagName('호')).map(function(ho){
-        var hoText=(ho.getElementsByTagName('호내용')[0]||{}).textContent; hoText=hoText? hoText.trim():'';
-        var moks=[].slice.call(ho.getElementsByTagName('목')).map(function(m){return (m.textContent||'').trim()});
-        return {hoText:hoText, moks:moks};
+  async function searchLawRow(lawQuery){
+    var refinedQ=refineLawName(lawQuery||''); if(!refinedQ) return null;
+    if(lawIdCache.has(refinedQ)) return lawIdCache.get(refinedQ);
+
+    var clean=function(s){return canonName(refineLawName(s||''))};
+    var qCanon=clean(refinedQ);
+
+    async function tryJson(qRaw){
+      var url=buildURL('/lawSearch.do',{OC:OC,target:'law',type:'JSON',query:qRaw,display:10});
+      var t=await fetchTextDirectOrProxy(url); try{
+        var d=JSON.parse(t); var root=d&&(d.LawSearch||d);
+        var rows=[]; if(root&&root.law){ rows=Array.isArray(root.law)?root.law:[root.law] }
+        var best=pickBest(rows,qCanon); return best;
+      }catch(e){return null}
+    }
+    async function tryXml(qRaw){
+      var url=buildURL('/lawSearch.do',{OC:OC,target:'law',type:'XML',query:qRaw,display:10});
+      var t=await fetchTextDirectOrProxy(url); try{
+        var dom=new DOMParser().parseFromString(t,'text/xml');
+        var list=[].slice.call(dom.getElementsByTagName('law'));
+        var rows=list.map(function(n){
+          var g=function(tag){var el=n.getElementsByTagName(tag)[0]; return el?(el.textContent||'').trim():''};
+          return {법령명한글:g('법령명한글'), 법령ID:g('법령ID'), 법령일련번호:g('법령일련번호'), 법령상태:g('법령상태')};
+        });
+        return pickBest(rows,qCanon);
+      }catch(e){return null}
+    }
+    async function tryHtml(qRaw){
+      var url=buildURL('/lawSearch.do',{OC:OC,target:'law',type:'HTML',query:qRaw,display:10});
+      var t=await fetchTextDirectOrProxy(url); try{
+        var dom=new DOMParser().parseFromString(t,'text/html');
+        var rows=[].slice.call(dom.querySelectorAll('a[href*="ID="]')).map(function(a){
+          var href=a.getAttribute('href')||''; var id=(href.match(/ID=([^&]+)/)||[])[1]||''; var name=(a.textContent||'').trim();
+          return id? {법령명한글:name, 법령ID:decodeURIComponent(id)} : null;
+        }).filter(Boolean);
+        return pickBest(rows,qCanon);
+      }catch(e){return null}
+    }
+    function pickBest(rows,wantCanon){
+      if(!rows||!rows.length) return null;
+      var normalize=function(x){return canonName(refineLawName((x.법령명한글||'').trim()))};
+      var cur=rows.filter(function(r){return /현행/.test((r.법령상태||'').trim())});
+      var pool=cur.length?cur:rows.slice();
+      var exact=pool.find(function(r){return normalize(r)===wantCanon});
+      return exact || pool[0] || null;
+    }
+
+    var row=await tryJson(refinedQ) || await tryXml(refinedQ) || await tryHtml(refinedQ);
+    if(row){ lawIdCache.set(refinedQ,row); }
+    return row;
+  }
+
+  async function searchOrdinRow(qRaw){
+    var key=refineLawName(qRaw||''); if(!key) return null;
+    if(ordinCache.has(key)) return ordinCache.get(key);
+
+    function pick(rows,want){
+      if(!rows||!rows.length) return null;
+      var wantCanon=canonName(refineLawName(want));
+      rows.sort(function(a,b){
+        var sa = (/현행/.test(a.status||'')) ? 1 : 0;
+        var sb = (/현행/.test(b.status||'')) ? 1 : 0;
+        if(sb-sa!==0) return sb-sa;
+        var na=canonName(refineLawName(a.name||''))===wantCanon?1:0;
+        var nb=canonName(refineLawName(b.name||''))===wantCanon?1:0;
+        return nb-na;
       });
-      return {hTitle:hTitle, hos:hos};
+      return rows[0];
+    }
+
+    async function j(){
+      var url=buildURL('/lawSearch.do',{OC:OC,target:'ordin',type:'JSON',query:qRaw,display:10});
+      var t=await fetchTextDirectOrProxy(url); try{
+        var d=JSON.parse(t); var root=d&&(d.OrdinSearch||d);
+        var rows=[]; if(root&&root.ordin){ rows=Array.isArray(root.ordin)?root.ordin:[root.ordin] }
+        return rows.map(function(x){
+          return {kind:'ordin', name:(x.자치법규명||x.자치법규명한글||'').trim(), id:(x.자치법규ID||'').trim(), mst:(x.자치법규일련번호||'').trim(), org:(x.지자체명||'').trim(), status:(x.자치법규상태||'').trim()};
+        });
+      }catch(e){return null}
+    }
+    async function x(){
+      var url=buildURL('/lawSearch.do',{OC:OC,target:'ordin',type:'XML',query:qRaw,display:10});
+      var t=await fetchTextDirectOrProxy(url); try{
+        var dom=new DOMParser().parseFromString(t,'text/xml');
+        var list=[].slice.call(dom.getElementsByTagName('ordin'));
+        return list.map(function(n){
+          var g=function(tag){var el=n.getElementsByTagName(tag)[0]; return el?(el.textContent||'').trim():''};
+          return {kind:'ordin', name:(g('자치법규명')||g('자치법규명한글')||'').trim(), id:g('자치법규ID'), mst:g('자치법규일련번호'), org:g('지자체명'), status:g('자치법규상태')};
+        });
+      }catch(e){return null}
+    }
+    async function h(){
+      var url=buildURL('/lawSearch.do',{OC:OC,target:'ordin',type:'HTML',query:qRaw,display:10});
+      var t=await fetchTextDirectOrProxy(url); try{
+        var dom=new DOMParser().parseFromString(t,'text/html');
+        var rows=[].slice.call(dom.querySelectorAll('a')).map(function(a){
+          var href=a.getAttribute('href')||''; var on=a.getAttribute('onclick')||'';
+          var id=((href.match(/ID=([^&]+)/)||[])[1]) || ((on.match(/ID=([^'")&]+)/)||[])[1] || '';
+          var mst=((href.match(/MST=([^&]+)/)||[])[1]) || ((on.match(/MST=([^'")&]+)/)||[])[1] || '';
+          if(!(id||mst)) return null;
+          return {kind:'ordin', name:(a.textContent||'').trim(), id:decodeURIComponent(id||''), mst:decodeURIComponent(mst||''), org:'', status:''};
+        }).filter(Boolean);
+        return rows;
+      }catch(e){return null}
+    }
+
+    var rows = await j() || await x() || await h() || [];
+    var best = pick(rows, key);
+    if(best){ ordinCache.set(key,best); }
+    return best || null;
+  }
+
+  /* ===== 조문 미리보기(법/조례) ===== */
+  async function fetchLawArticleXML(urlXML){
+    var xmlText=await fetchTextDirectOrProxy(urlXML); if(!xmlText) return null;
+    var dom; try{ dom=new DOMParser().parseFromString(xmlText,'text/xml'); }catch(e){ return null; }
+    var get=function(tag,node){node=node||dom; var el=node.getElementsByTagName(tag)[0]; return el? (el.textContent||'').trim() : ''};
+    var title=get('조문제목')||''; var articleBodyRaw=get('조문내용')||'';
+    var hangs=[].slice.call(dom.getElementsByTagName('항')).map(function(h){
+      var ht=(h.getElementsByTagName('항내용')[0]||{}).textContent||''; ht=ht.trim();
+      var hos=[].slice.call(h.getElementsByTagName('호')).map(function(ho){
+        var hot=(ho.getElementsByTagName('호내용')[0]||{}).textContent||''; hot=hot.trim();
+        var moks=[].slice.call(ho.getElementsByTagName('목')).map(function(m){return (m.textContent||'').trim()});
+        return {hoText:hot, moks:moks};
+      });
+      return {hTitle:ht, hos:hos};
     });
     return {title:title, articleBodyRaw:articleBodyRaw, hangs:hangs};
   }
 
-  function renderArticlePreview(opts){
-    var lawName=opts.lawName, joLabel=opts.joLabel, data=opts.data;
-    var modal=$('#modal'), body=$('#modalBody'), titleEl=$('#modalTitle');
-    if(titleEl) titleEl.textContent = lawName+' '+joLabel+' (전문)';
-    var html='';
-    if(data.articleBodyRaw){ html+='<div>'+sanitize(data.articleBodyRaw)+'</div>'; }
-    if(data.hangs && data.hangs.length){
-      var parts=[];
-      data.hangs.forEach(function(h){
-        if(h.hTitle) parts.push('<div class="hang">'+ sanitize(h.hTitle)+'</div>');
-        if(h.hos && h.hos.length){
-          h.hos.forEach(function(ho){
-            if(ho.hoText) parts.push('<div class="ho">'+ sanitize(ho.hoText)+'</div>');
-            if(ho.moks && ho.moks.length){
-              ho.moks.forEach(function(mk){
-                parts.push('<div class="mok">'+ sanitize(mk)+'</div>');
-              });
-            }
-          });
+  function extractJoKey(raw){
+    var s=(raw||'').replace(/\s+/g,'').replace(/^제/,'');
+    var m=s.match(/(\d+)(?:조(?:의(\d+))?)?/); return m? (m[1]+(m[2]?'의'+m[2]:'')) : '';
+  }
+  function wantKeyFrom(jo,joi){return String(parseInt(jo,10)) + (joi?('의'+String(parseInt(joi,10))):'')}
+
+  async function fetchOrdinByIDorMST(id, mst, jo, joi){
+    var targets=[]; if(id) targets.push({k:'ID',v:id}); if(mst) targets.push({k:'MST',v:mst});
+    var want=wantKeyFrom(jo,joi);
+    for(var i=0;i<targets.length;i++){
+      var t=targets[i];
+      var url=buildURL('/lawService.do',{OC:OC,target:'ordin',type:'XML'}); url += '&'+t.k+'='+encodeURIComponent(t.v);
+      var xmlText=await fetchTextDirectOrProxy(url); if(!xmlText) continue;
+      var dom; try{ dom=new DOMParser().parseFromString(xmlText,'text/xml'); }catch(e){ continue; }
+      var nodes=[].slice.call(dom.getElementsByTagName('조문')); if(!nodes.length) continue;
+      var picked=null;
+      for(var j=0;j<nodes.length;j++){
+        var raw=((nodes[j].getElementsByTagName('조문번호')[0]||{}).textContent)||'';
+        if(extractJoKey(raw)===want){ picked=nodes[j]; break; }
+      }
+      if(!picked){
+        for(var k=0;k<nodes.length;k++){
+          var raw2=((nodes[k].getElementsByTagName('조문번호')[0]||{}).textContent)||'';
+          if(extractJoKey(raw2)===String(parseInt(jo,10))){ picked=nodes[k]; break; }
         }
+      }
+      if(!picked) continue;
+      var get=function(tag,node){node=node||picked; var el=node.getElementsByTagName(tag)[0]; return el? (el.textContent||'').trim() : ''};
+      var body=get('조내용'); var title=get('조제목')||get('조문번호')||'';
+      var parts=[];
+      var hangs=[].slice.call(picked.getElementsByTagName('항'));
+      hangs.forEach(function(h){
+        var ht=(h.getElementsByTagName('항내용')[0]||{}).textContent||''; if(ht) parts.push('<div class="hang">'+(ht.trim())+'</div>');
+        var hos=[].slice.call(h.getElementsByTagName('호'));
+        hos.forEach(function(ho){
+          var hot=(ho.getElementsByTagName('호내용')[0]||{}).textContent||''; if(hot) parts.push('<div class="ho">'+(hot.trim())+'</div>');
+          var moks=[].slice.call(ho.getElementsByTagName('목'));
+          moks.forEach(function(m){ var mk=(m.textContent||'').trim(); if(mk) parts.push('<div class="mok">'+mk+'</div>'); });
+        });
       });
-      html+=parts.join('');
+      var articleBodyRaw=(body?'<div>'+body.trim()+'</div>':'') + parts.join('');
+      return {title:title, articleBodyRaw:articleBodyRaw, hangs:[]};
     }
-    if(!html) html='<div class="mini">조문 본문을 불러오지 못했습니다.</div>';
-    if(body) body.innerHTML=html;
-    if(modal) modal.classList.add('on');
+    return null;
   }
 
+  /* ===== 미리보기 모달 렌더 ===== */
+  function sanitize(html){return (html||'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')}
+  function renderArticlePreview(payload){
+    var lawName=payload.lawName, joLabel=payload.joLabel, data=payload.data;
+    var modal=$('#mdl'); var titleEl=$('#modalTitle'); var body=$('#modalBody');
+    if(titleEl) titleEl.textContent = lawName+' '+(joLabel||'');
+    var html=''; if(data && data.title){ html+='<div><b>'+data.title+'</b></div>'; }
+    if(data && data.articleBodyRaw){ html+=sanitize(data.articleBodyRaw); }
+    body.innerHTML = html || '<div class="mini">본문이 없습니다.</div>';
+    modal.classList.add('on');
+  }
   function bindModal(){
-    var closeBtn=$('#modalClose'); if(closeBtn){ closeBtn.addEventListener('click', function(){ var m=$('#modal'); if(m) m.classList.remove('on'); }) }
-    var modal=$('#modal');
-    if(modal){
-      modal.addEventListener('click', function(e){ if(e.target && e.target.id==='modal'){ modal.classList.remove('on'); } });
-    }
+    var closeBtn=$('#modalClose'); if(closeBtn){ closeBtn.addEventListener('click', function(){ $('#mdl').classList.remove('on'); }) }
+    var modal=$('#mdl'); if(modal){ modal.addEventListener('click', function(e){ if(e.target && e.target.id==='mdl'){ modal.classList.remove('on'); } }); }
   }
 
-  /* ===== Result list ===== */
+  /* ===== UI ===== */
+  function toast(msg,ms){ms=ms||2200; var el=$('.toast'); var t=$('#toastMsg'); if(t) t.textContent=msg; if(el){ el.classList.add('on'); setTimeout(function(){el.classList.remove('on')},ms)}}
+  function skeleton(n){n=n||2; var arr=[]; for(var i=0;i<n;i++){arr.push('<li class="item"><div class="sk-line skeleton" style="width:58%"></div><div class="sk-gap"></div><div class="sk-line skeleton" style="width:32%"></div></li>')} return arr.join('')}
+
   function appendResult(listEl, payload){
-    var title=payload.title, lawId=payload.lawId, lsiSeq=payload.lsiSeq, articleURL=payload.articleURL, fullURL=payload.fullURL, lawName=payload.lawName, joText=payload.joText;
+    var kind=payload.kind, title=payload.title, lawName=payload.lawName, joText=payload.joText;
+    var lawId=payload.lawId, lsiSeq=payload.lsiSeq, mst=payload.mst;
+    var articleURL=payload.articleURL, fullURL=payload.fullURL;
 
     var linkHtml='';
-    if(joText){ // 조문이 있는 경우에만 ①, ② 노출
-      linkHtml += '① <button type="button" class="preview-btn">조문 미리보기</button> · ';
-      linkHtml += '② <a class="go-article" href="'+articleURL+'" target="_blank" rel="noopener">조문 바로가기</a> · ';
+    if(joText){
+      linkHtml += '① <button type="button" class="preview-btn">'+(kind==='law'?'조문 미리보기':'조문 미리보기(조례)')+'</button> · ';
+      if(kind==='law'){
+        linkHtml += '② <a class="go-article" href="'+articleURL+'" target="_blank" rel="noopener">조문 바로가기</a> · ';
+      }else{
+        if(lawId){
+          var direct=buildOrdinDirectArticleURL(lawId, joText.jo, joText.joi);
+          linkHtml += '② <a class="go-ordin-direct" href="'+direct+'" target="_blank" rel="noopener">조문 바로가기(조례 직링크)</a> · ';
+        }else{
+          linkHtml += '② <a class="go-ordin-public" href="'+publicOrdinSearchURL(lawName+' 제'+parseInt(joText.jo,10)+(joText.joi?('의'+parseInt(joText.joi,10)):'')+'조')+'" target="_blank" rel="noopener">자치법규 탭에서 보기</a> · ';
+        }
+      }
     }
-    linkHtml += '③ <a class="go-full" href="'+fullURL+'" target="_blank" rel="noopener">법령 전체</a>';
+    linkHtml += '③ <a class="go-full" href="'+fullURL+'" target="_blank" rel="noopener">'+(kind==='law'?'법령 전체':'자치법규 전체')+'</a>';
 
     var li=document.createElement('li'); li.className='item';
-    li.innerHTML='' +
-      '<div class="item-line">' +
-        '<span class="t">'+title+'</span>' +
-        (lawId ? '<span class="meta">법령ID: '+lawId+(lsiSeq?(' · 일련번호: '+lsiSeq):'')+'</span>' : '<span class="meta">법령ID 미확인</span>') +
-        '<span class="links">' + linkHtml + '</span>' +
-      '</div>';
+    li.innerHTML='<div class="item-line">'
+      +'<span class="t">'+title+'</span>'
+      +(kind==='law'
+          ? (lawId? '<span class="meta">법령ID: '+lawId+(lsiSeq?(' · 일련번호: '+lsiSeq):'')+'</span>' : '<span class="meta">법령ID 미확인</span>')
+          : ((lawId||mst)? '<span class="meta">자치법규ID: '+(lawId||'-')+(mst?(' · 일련번호: '+mst):'')+'</span>' : '<span class="meta">자치법규ID 미확인</span>')
+       )
+      +'<span class="links">'+linkHtml+'</span>'
+      +'</div>';
 
+    /* 이벤트 바인딩 */
     if(joText){
-      var a=li.querySelector('.go-article');
-      if(a){
-        a.addEventListener('click', function(e){
-          e.preventDefault();
-          var url=a.getAttribute('href');
-          fetchTextDirectOrProxy(url).then(function(html){
-            if(html && !isFailPage(html)) window.open(url,'_blank','noopener');
-            else window.open(publicLawURL(title.split(' 제')[0]),'_blank','noopener');
+      if(kind==='law'){
+        var a=li.querySelector('.go-article');
+        if(a){
+          a.addEventListener('click', function(e){
+            e.preventDefault();
+            var url=a.getAttribute('href');
+            fetchTextDirectOrProxy(url).then(function(html){
+              if(html && !isFailPage(html)) window.open(url,'_blank','noopener');
+              else window.open(publicLawURL(title.split(' 제')[0]),'_blank','noopener');
+            });
           });
-        });
+        }
       }
       var btn=li.querySelector('.preview-btn');
       if(btn){
         btn.addEventListener('click', async function(){
           btn.disabled=true; btn.textContent='불러오는 중…';
           try{
-            var xmlURL=buildLawArticleXMLURL(lawId, joText);
-            var data=await fetchArticleXML(xmlURL);
-            if(!data){ toast('조문 전문을 불러오지 못했습니다.'); }
+            var data=null;
+            if(kind==='law'){
+              var xmlURL=buildLawArticleXMLURL(lawId, joText);
+              data=await fetchLawArticleXML(xmlURL);
+            }else{
+              data=await fetchOrdinByIDorMST(lawId||'', mst||'', (joText.jo||1), (joText.joi||null));
+            }
+            if(!data){ toast('조문 본문을 불러오지 못했습니다.'); }
             else{
               var joLabel=title.replace(lawName,'').trim();
               renderArticlePreview({lawName:lawName, joLabel:joLabel, data:data});
             }
           } finally {
-            btn.disabled=false; btn.textContent='조문 미리보기';
+            btn.disabled=false; btn.textContent=(kind==='law'?'조문 미리보기':'조문 미리보기(조례)');
           }
         });
       }
     }
-
     listEl.appendChild(li);
   }
 
-  /* ===== Run flow ===== */
+  /* ===== 실행 플로우 ===== */
   async function run(){
     var input=$('#input'); var resUl=$('#resList');
     if(resUl) resUl.innerHTML='';
@@ -525,71 +516,77 @@
 
     var cites=extract(text);
     if(!cites.length){
-      if(resUl) resUl.innerHTML='<li class="item mini">인식 가능한 법령명/조문을 찾지 못했습니다. (같은법/동법 제외) · 예: 「사립학교법」, 「사립학교법」 제43조</li>';
+      if(resUl) resUl.innerHTML='<li class="item mini">인식 가능한 법령/자치법규 또는 조문을 찾지 못했습니다. · 예: 「사립학교법」 제43조, 「경기도교육청 공유재산 관리 조례」 제14조의2</li>';
       return;
     }
 
-    var promises=cites.map(function(it){return searchLawRow(it.name)});
-    var rows=await Promise.allSettled(promises);
+    /* 분류별 검색 */
+    var lookups=await Promise.all(cites.map(async function(it){
+      var kind=classifyKind(it.name);
+      if(kind==='ordin'){ var orow=await searchOrdinRow(it.name); return {kind:'ordin', cite:it, row:orow}; }
+      var lrow=await searchLawRow(it.name); return {kind:'law', cite:it, row:lrow};
+    }));
+
     if(resUl) resUl.innerHTML='';
 
-    for(var i=0;i<cites.length;i++){
-      var it=cites[i];
-      var st=rows[i];
-      var row=(st.status==='fulfilled')?st.value:null;
-
+    for(var i=0;i<lookups.length;i++){
+      var k=lookups[i].kind; var it=lookups[i].cite; var row=lookups[i].row;
       var lawName=it.name;
-      var title=it.jo ? (lawName+' 제'+parseInt(it.jo,10)+(it.joi?('의'+parseInt(it.joi,10)):'')+'조') : lawName;
+      var title= it.jo ? (lawName+' 제'+parseInt(it.jo,10)+(it.joi?('의'+parseInt(it.joi,10)):'')+'조') : lawName;
 
-      if(row){
-        var lawId=row.법령ID||''; var lsiSeq=row.법령일련번호||'';
-        var fullURL=buildLawFullHTMLURL(lawId);
-        var articleURL= it.jo ? buildLawArticleURL(lawId,it) : '';
-        appendResult(resUl,{
-          title:title, lawId:lawId, lsiSeq:lsiSeq,
-          articleURL:articleURL, fullURL:fullURL,
-          lawName:lawName, joText: it.jo ? it : null
-        });
-      }else{
-        // 법령ID를 못 찾아도, ③ 법령 전체는 공개페이지로 제공
-        var fullURL=publicLawURL(lawName);
-        appendResult(resUl,{
-          title:title, lawId:'', lsiSeq:'',
-          articleURL:'', fullURL:fullURL,
-          lawName:lawName, joText: null
-        });
+      if(k==='law'){
+        if(row && row.법령ID){
+          var fullURL=buildLawFullHTMLURL(row.법령ID);
+          var articleURL= it.jo ? buildLawArticleURL(row.법령ID,it) : '';
+          appendResult(resUl,{
+            kind:'law', title:title, lawName:lawName, joText: it.jo?it:null,
+            lawId:row.법령ID||'', lsiSeq:row.법령일련번호||'', mst:'',
+            articleURL:articleURL, fullURL:fullURL
+          });
+        }else{
+          appendResult(resUl,{
+            kind:'law', title:title, lawName:lawName, joText: it.jo?it:null,
+            lawId:'', lsiSeq:'', mst:'',
+            articleURL:'', fullURL:publicLawURL(lawName)
+          });
+        }
+      }else{ /* ordin */
+        if(row && (row.id || row.mst)){
+          var fullURL=buildOrdinFullHTMLURL(row.id,row.mst);
+          appendResult(resUl,{
+            kind:'ordin', title:title, lawName:lawName, joText: it.jo?it:null,
+            lawId:row.id||'', lsiSeq:'', mst:row.mst||'',
+            articleURL:'', fullURL:fullURL
+          });
+        }else{
+          appendResult(resUl,{
+            kind:'ordin', title:title, lawName:lawName, joText: it.jo?it:null,
+            lawId:'', lsiSeq:'', mst:'',
+            articleURL:'', fullURL:publicOrdinSearchURL(lawName)
+          });
+        }
       }
     }
   }
 
   function bind(){
     var runBtn=$('#run'); if(runBtn){ runBtn.addEventListener('click', run); }
-    var clearBtn=$('#clear');
-    if(clearBtn){
+    var clearBtn=$('#clear'); if(clearBtn){
       clearBtn.addEventListener('click', function(){
-        var resUl = $('#resList');
-        if(resUl) resUl.innerHTML = '';
-        var input = $('#input');
-        if(input){ input.value = ''; input.focus(); }
+        var resUl=$('#resList'); if(resUl) resUl.innerHTML='';
+        var input=$('#input'); if(input){ input.value=''; input.focus(); }
       });
     }
-
-    var input=$('#input');
-    if(input){
+    var input=$('#input'); if(input){
       input.addEventListener('keydown', function(e){
-        if(e.key==='Enter' && !e.altKey && !e.shiftKey && !e.ctrlKey){
-          e.preventDefault(); run();
-        }
+        if(e.key==='Enter' && !e.altKey && !e.shiftKey && !e.ctrlKey){ e.preventDefault(); run(); }
       });
     }
     bindModal();
   }
 
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded', bind);
-  }else{
-    bind();
-  }
+  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', bind); } else { bind(); }
+
 })();
 </script>
 </body>
