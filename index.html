@@ -73,7 +73,7 @@
       <h1>법조문 자동 추출·검색</h1>
       <div class="sub">본문에서 <b>법령/자치법규</b>를 찾아 <b>조문 미리보기</b>와 <b>전체 본문</b> 링크를 제공합니다. <span class="mini">현행 우선, 없으면 비현행·공개검색까지 폴백</span></div>
     </div>
-    <div class="badge">OC: bro3362</div>
+    <div class="badge" id="verBadge">OC: bro3362</div>
   </header>
 
   <div class="grid">
@@ -112,6 +112,21 @@
 </div>
 
 <script>
+/* ================= Diagnostics ================= */
+const APP_VER = '2025-08-18 r3';
+(function diagnosticsBoot(){
+  const badge = document.getElementById('verBadge');
+  if (badge) badge.textContent = `OC: bro3362 · ${APP_VER}`;
+  // 전역 에러 캡처
+  window.onerror = function(msg, src, lineno, colno, err){
+    try { toast(`스크립트 오류: ${msg} @${lineno}:${colno}`); } catch(_) {}
+    console.error('[onerror]', msg, src, lineno, colno, err);
+  };
+  window.onunhandledrejection = function(ev){
+    try { toast('처리되지 않은 오류가 발생했습니다. 콘솔을 확인하세요.'); } catch(_) {}
+    console.error('[unhandledrejection]', ev.reason || ev);
+  };
+})();
 /* =============== 공통 유틸 =============== */
 var DRF='https://www.law.go.kr/DRF';
 var OC='bro3362';
@@ -130,7 +145,7 @@ var joTo6=(jo,joi)=>{var h=pad(jo,4);return joi?h+pad(joi,2):h+'00'};
 var buildLawArticleURL=(id,obj)=>{var JO=joTo6(obj.jo,obj.joi); var HANG=(obj.hang?pad(obj.hang,6):(obj.ho?'000000':'')); var HO=(obj.ho?pad(obj.ho,6):''); var MOK=(obj.mok?String(obj.mok).trim().slice(0,1).replace(/[^가-힣]/u,''):''); var p={OC:OC,target:'lawjosub',type:'HTML',ID:id,JO:JO}; if(HANG)p.HANG=HANG; if(HO)p.HO=HO; if(MOK)p.MOK=MOK; return buildURL('/lawService.do',p)};
 var buildLawArticleXMLURL=(id,obj)=>{var JO=joTo6(obj.jo,obj.joi); var HANG=(obj.hang?pad(obj.hang,6):(obj.ho?'000000':'')); var HO=(obj.ho?pad(obj.ho,6):''); var MOK=(obj.mok?String(obj.mok).trim().slice(0,1).replace(/[^가-힣]/u,''):''); var p={OC:OC,target:'lawjosub',type:'XML',ID:id,JO:JO}; if(HANG)p.HANG=HANG; if(HO)p.HO=HO; if(MOK)p.MOK=MOK; return buildURL('/lawService.do',p)};
 
-/* 안전한 네트워킹: 직접 요청 → 실패 시 프록시 폴백 */
+/* 안전 네트워킹: 직접 요청 → 실패 시 프록시 폴백 */
 async function fetchTextDirectOrProxy(url, opts) {
   opts = opts || {};
   const timeoutMs = opts.timeoutMs || 9000;
@@ -167,7 +182,6 @@ async function fetchTextDirectOrProxy(url, opts) {
 
 /* =============== 정규화/보조 =============== */
 var canonName=s=>(s||'').replace(/[\s"“”'‘’\[\]\(\)「」]/g,'').replace(/[·ㆍ]/g,'');
-var displayName=s=>(s||'').replace(/["“”'‘’\[\]\(\)「」]/g,'').trim();
 function refineLawName(name){
   var s=(name||'').trim(); if(!s) return s;
   s=s.replace(/^(?:까지|및|또는|등|관련|관한|따른|에\s*따른|에\s*의한|의)\s+/, '');
@@ -416,7 +430,7 @@ function renderArticlePreview(opts){
       if(h.hos && h.hos.length){
         h.hos.forEach(function(ho){
           if(ho.hoText) parts.push('<div class="ho">'+ sanitize(ho.hoText)+'</div>');
-          if(ho.moks && h.moks.length){
+          if(ho.moks && ho.moks.length){
             ho.moks.forEach(function(mk){ parts.push('<div class="mok">'+ sanitize(mk)+'</div>'); });
           }
         });
@@ -483,7 +497,7 @@ function appendResult(listEl, payload){
 
 /* =============== 실행(run) =============== */
 async function run(){
-  var input=$('#input'); var resUl=$('#resList']);
+  var input=$('#input'); var resUl=$('#resList');   // ✅ 괄호 수정
   try{
     if(resUl) resUl.innerHTML='';
     var text=input? (input.value||'') : '';
@@ -527,6 +541,8 @@ async function run(){
     toast('오류가 발생했습니다. 콘솔을 확인해 주세요.');
   }
 }
+
+/* =============== 바인딩 + 자가진단 =============== */
 function bind(){
   var runBtn=$('#run'); if(runBtn){ runBtn.addEventListener('click', run); }
   var clearBtn=$('#clear');
@@ -546,6 +562,23 @@ function bind(){
     var closeBtn=$('#modalClose'); if(closeBtn){ closeBtn.addEventListener('click', function(){ var m=$('#modal'); if(m) m.classList.remove('on'); }) }
     var modal=$('#modal'); if(modal){ modal.addEventListener('click', function(e){ if(e.target && e.target.id==='modal'){ modal.classList.remove('on'); } }); }
   })();
+
+  // ✅ 자가 진단: 주요 함수/정규식 동작 확인
+  setTimeout(() => {
+    try{
+      const sample = '「사립학교법」 제2조, 「경기도교육청 행정기구 및 정원 조례」 제5조';
+      const cites = window.__LAW_EXTRACT__(sample);
+      if(!Array.isArray(cites) || cites.length<2){
+        toast('초기 진단: 추출기가 예상대로 동작하지 않습니다. 콘솔 확인!');
+        console.warn('[self-check] extractor failed', cites);
+      }else{
+        console.log('[self-check] OK', cites);
+      }
+    }catch(err){
+      toast('초기 진단 중 오류 발생. 콘솔 확인!');
+      console.error('[self-check] error', err);
+    }
+  }, 50);
 }
 if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', bind); } else { bind(); }
 </script>
