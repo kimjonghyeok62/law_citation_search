@@ -368,7 +368,7 @@
   }
 
   async function previewOrdinanceArticle(name, joText){
-    var url=publicOrdinURL(name);
+    var url = publicOrdinArticleURL(name, joText.jo, joText.joi);
     var html=await fetchTextDirectOrProxy(url);
     if(!html){ toast('자치법규 본문을 불러오지 못했습니다.'); return; }
     var txt=extractOrdinArticleTextFromHTML(html, joText.jo, joText.joi);
