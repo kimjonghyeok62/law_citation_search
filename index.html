@@ -114,14 +114,12 @@
   var buildURL=function(p,params){var u=new URL(DRF+p); Object.keys(params).forEach(function(k){var v=params[k]; if(v!=null&&v!=='') u.searchParams.set(k,v)}); return u.toString()};
   var withProxy=function(url,base){var b=(base||'https://law-proxy.hyok96.workers.dev/?url=').trim(); if(b.indexOf('?')===-1) b+=(b.endsWith('/')?'':'/')+'?'; if(!/\burl=/.test(b)) b+='url='; return b+encodeURIComponent(url)};
 
-  // ★ 변경: CORS/프록시 실패 시 r.jina.ai 로 최종 폴백
   function fetchTextDirectOrProxy(url,opts){
     opts=opts||{}; var timeoutMs=opts.timeoutMs||8000;
     var fetchWithTimeout=function(u){
       var ac=new AbortController(); var id=setTimeout(function(){ac.abort()},timeoutMs);
       return fetch(u,{signal:ac.signal}).finally(function(){clearTimeout(id)});
     };
-    // 1) 직결 시도
     return fetchWithTimeout(url).then(async function(r){
       if(r.ok){
         var t=await r.text();
@@ -129,7 +127,6 @@
         if(ct.indexOf('json')>-1 || t.length>30) return t;
       }
       throw new Error('direct fail');
-    // 2) 프록시 시도
     }).catch(function(){
       return fetchWithTimeout(withProxy(url,proxyBase())).then(async function(r2){
         if(r2.ok){
@@ -137,15 +134,8 @@
           var ct2=(r2.headers.get('content-type')||'');
           if(ct2.indexOf('json')>-1 || t2.length>30) return t2;
         }
-        throw new Error('proxy fail');
-      // 3) ★ r.jina.ai 리더 폴백
-      }).catch(function(){
-        var reader='https://r.jina.ai/http://'+url.replace(/^https?:\/\//,'');
-        return fetchWithTimeout(reader).then(function(r3){
-          if(!r3.ok) return '';
-          return r3.text();
-        }).catch(function(){return ''});
-      });
+        return '';
+      }).catch(function(){return ''});
     });
   }
 
@@ -180,9 +170,10 @@
     return buildURL('/lawService.do',p);
   };
 
-  /* ===== Normalize & Search (생략 없이 원문 유지) ===== */
+  /* ===== Normalize & Search ===== */
   var canonName=function(s){return (s||'').replace(/[\s"“”'‘’\[\]\(\)「」]/g,'').replace(/[·ㆍ]/g,'')};
   var displayName=function(s){return (s||'').replace(/["“”'‘’\[\]\(\)「」]/g,'').trim()};
+
   function refineLawName(name){
     var s=(name||'').trim(); if(!s) return s;
     s=s.replace(/^(?:까지|및|또는|등|관련|관한|따른|에\s*따른|에\s*의한|의)\s+/, '');
@@ -201,6 +192,7 @@
     }
     return s;
   }
+
   function generateAlternatives(q){
     var s=displayName(q||'').replace(/\s+/g,'').trim();
     var alts=new Set();
@@ -212,6 +204,7 @@
     if(q) alts.add(q);
     return Array.from(alts).filter(Boolean);
   }
+
   function isOrdinanceName(name){
     var s=(name||'').trim();
     var core=s.replace(/\s*(시행령|시행규칙)$/,'').trim();
@@ -219,9 +212,10 @@
     var endsLaw=/(법|법률)$/.test(core);
     return endsOrdin && !endsLaw;
   }
+
   async function searchLawRow(lawQuery){
     var refinedQ=refineLawName(lawQuery||''); if(!refinedQ) return null;
-    if(isOrdinanceName(refinedQ)) return null;
+    if(isOrdinanceName(refinedQ)) return null; // 자치법규는 DRF 미조회
     var variants=generateAlternatives(lawQuery);
     var clean=function(s){return canonName(refineLawName(s||''))};
     var wantsEO=/(시행령|시행규칙)$/.test(refinedQ)?refinedQ.match(/(시행령|시행규칙)$/)[1]:'';
@@ -273,7 +267,7 @@
       .replace(/[\u200B-\u200D\uFEFF]/g,'')
       .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g,' ')
       .replace(/[“”]/g,'"').replace(/[‘’]/g,"'")
-      .replace(/[『「]/g,'«').replace(/[』」]/g,'»')
+      .replace/[『「]/g,'«').replace(/[』」]/g,'»')
       .replace(/\s+/g,' ')
       .trim();
   }
@@ -282,6 +276,7 @@
   var LAW_EO='(?:시행령|시행규칙)';
   var NAME_GROUP='('+LAW_BASE+'(?:\\s*'+LAW_EO+')?)';
   var BOUND='(?:^|[\\s\\(\\[\\{«「"“\'])';
+
   var D='\\d+';
   var JO='제\\s*('+D+')\\s*조(?:\\s*의\\s*('+D+'))?';
   var HANG='(?:\\s*제?\\s*('+D+')\\s*항)?';
@@ -366,10 +361,18 @@
   }
 
   async function previewOrdinanceArticle(name, joText){
-    var url=publicOrdinArticleURL(name, joText.jo, joText.joi); // ★ 변경: 조문 전용 URL 직접 조회
-    var html=await fetchTextDirectOrProxy(url);
-    if(!html){ toast('자치법규 본문을 불러오지 못했습니다.'); return; } // ★ 변경: toast() 사용
+    // ★ 변경(최소): CORS 회피를 위해 r.jina.ai 리더를 통해 조문 전용 URL을 텍스트로 읽음
+    var articleURL = publicOrdinArticleURL(name, joText.jo, joText.joi);
+    var readerURL  = 'https://r.jina.ai/http://' + articleURL.replace(/^https?:\/\//,'');
+    var html = '';
+    try{
+      var r = await fetch(readerURL);
+      if(r.ok) html = await r.text();
+    }catch(e){ html = ''; }
+
+    if(!html){ toast('자치법규 본문을 불러오지 못했습니다.'); return; }
     var txt=extractOrdinArticleTextFromHTML(html, joText.jo, joText.joi);
+
     var modal=$('#modal'), body=$('#modalBody'), titleEl=$('#modalTitle');
     var joLabel='제'+parseInt(joText.jo,10)+(joText.joi?('의'+parseInt(joText.joi,10)):'')+'조';
     if(titleEl) titleEl.textContent=name.replace(/\s+/g,'')+' '+joLabel+' (자치법규)';
@@ -378,7 +381,7 @@
     if(modal) modal.classList.add('on');
   }
 
-  /* ===== Result list / 버튼 이벤트 등은 기존과 동일 ===== */
+  /* ===== Result list ===== */
   function appendResult(listEl,payload){
     var title=payload.title, lawId=payload.lawId, lsiSeq=payload.lsiSeq, articleURL=payload.articleURL, fullURL=payload.fullURL, lawName=payload.lawName, joText=payload.joText, isOrdinance=payload.isOrdinance;
 
@@ -482,7 +485,7 @@
     var input=$('#input'); var resUl=$('#resList');
     if(resUl) resUl.innerHTML='';
     var text=input? (input.value||'') : '';
-    if(!text.trim()){ toast('본문을 입력해 주세요'); return; }   // ★ 변경: toast() 사용
+    if(!text.trim()){ toast('본문을 입력해 주세요'); return; }
     if(resUl) resUl.innerHTML='<li class="item"><div class="sk-line skeleton" style="width:58%"></div><div class="sk-gap"></div><div class="sk-line skeleton" style="width:32%"></div></li>';
 
     var cites=extract(text);
@@ -545,7 +548,7 @@
   }
   if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', bind); } else { bind(); }
 
-  /* ★ 변경: 간단한 토스트 헬퍼 추가 (이름 충돌 없이 지역 스코프) */
+  /* (이미 페이지에 토스트 DOM이 있어 안전) */
   function toast(msg){
     var t=document.getElementById('toast');
     var m=document.getElementById('toastMsg');
@@ -553,8 +556,6 @@
     if(t){
       t.classList.add('on');
       setTimeout(function(){ t.classList.remove('on'); }, 1800);
-    } else {
-      alert(msg||''); // 컨테이너 미존재 시 안전 폴백
     }
   }
 })();
