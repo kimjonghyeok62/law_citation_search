@@ -73,6 +73,7 @@
       <div class="row" style="margin-top:10px">
         <button id="run" class="btn" type="button">추출·검색</button>
         <button id="clear" class="btn secondary" type="button">지우기</button>
+        <!-- ★ 변경(최소): 안내 문구 Alt → Shift -->
         <span class="mini">Enter(Shift+Enter는 줄바꿈)</span>
         <span class="right mini">응답이 없을 때 프록시 사용됨</span>
       </div>
@@ -111,53 +112,28 @@
   var enc=function(s){return encodeURIComponent(s)};
   var pad=function(n,w){return String(parseInt(n,10)).padStart(w,'0')};
   var proxyBase=function(){var pv=$('#proxy'); var v=pv && pv.value ? pv.value.trim() : 'https://law-proxy.hyok96.workers.dev/?url='; return v};
-
-  // ★ 변경: URL 생성 시 항상 캐시 무력화 파라미터 추가
-  var buildURL=function(p,params){
-    var u=new URL(DRF+p);
-    Object.keys(params||{}).forEach(function(k){
-      var v=params[k]; if(v!=null&&v!=='') u.searchParams.set(k,v);
-    });
-    u.searchParams.set('_ts', Date.now()); // ★ 변경
-    return u.toString();
-  };
-
-  // ★ 변경: 프록시 URL에도 원본 전체를 인코딩 + 캐시 무력화
-  var withProxy=function(url,base){
-    var b=(base||'https://law-proxy.hyok96.workers.dev/?url=').trim();
-    if(b.indexOf('?')===-1) b+=(b.endsWith('/')?'':'/')+'?';
-    if(!/\burl=/.test(b)) b+='url=';
-    var u=new URL(url, location.href);
-    u.searchParams.set('_ts', Date.now()); // ★ 변경
-    return b+encodeURIComponent(u.toString());
-  };
-
-  // ★ 변경: 제한/오류 문구 감지
-  var isLimited=function(t){
-    return /LIMIT|제한|too\s*many|quota|요청이\s*많|오류|error/i.test(t||'');
-  };
+  var buildURL=function(p,params){var u=new URL(DRF+p); Object.keys(params).forEach(function(k){var v=params[k]; if(v!=null&&v!=='') u.searchParams.set(k,v)}); return u.toString()};
+  var withProxy=function(url,base){var b=(base||'https://law-proxy.hyok96.workers.dev/?url=').trim(); if(b.indexOf('?')===-1) b+=(b.endsWith('/')?'':'/')+'?'; if(!/\burl=/.test(b)) b+='url='; return b+encodeURIComponent(url)};
 
   function fetchTextDirectOrProxy(url,opts){
     opts=opts||{}; var timeoutMs=opts.timeoutMs||8000;
     var fetchWithTimeout=function(u){
       var ac=new AbortController(); var id=setTimeout(function(){ac.abort()},timeoutMs);
-      return fetch(u,{signal:ac.signal, cache:'no-store'}).finally(function(){clearTimeout(id)}); // ★ 변경: cache:no-store
+      return fetch(u,{signal:ac.signal}).finally(function(){clearTimeout(id)});
     };
-    // 1) 직접
     return fetchWithTimeout(url).then(async function(r){
       if(r.ok){
         var t=await r.text();
         var ct=(r.headers.get('content-type')||'');
-        if((ct.indexOf('json')>-1 || t.length>30) && !isLimited(t)) return t; // ★ 변경
+        if(ct.indexOf('json')>-1 || t.length>30) return t;
       }
       throw new Error('direct fail');
     }).catch(function(){
-      // 2) 프록시
       return fetchWithTimeout(withProxy(url,proxyBase())).then(async function(r2){
         if(r2.ok){
           var t2=await r2.text();
           var ct2=(r2.headers.get('content-type')||'');
-          if((ct2.indexOf('json')>-1 || t2.length>30) && !isLimited(t2)) return t2; // ★ 변경
+          if(ct2.indexOf('json')>-1 || t2.length>30) return t2;
         }
         return '';
       }).catch(function(){return ''});
@@ -386,10 +362,12 @@
   }
 
   async function previewOrdinanceArticle(name, joText){
+    // ★ 변경(최소): '전체 자치법규 페이지'를 r.jina.ai로 읽어와 조문을 추출 (가장 안정적)
     var pageURL   = publicOrdinURL(name);
     var readerURL = 'https://r.jina.ai/http://' + pageURL.replace(/^https?:\/\//,'');
     var html      = await fetchTextDirectOrProxy(readerURL);
 
+    // 조문이 안 잡히면 '조문 전용 URL'도 한 번 더 시도(역시 r.jina.ai 경유)
     if(!html || !html.trim()){
       var articleURL = publicOrdinArticleURL(name, joText.jo, joText.joi);
       var readerURL2 = 'https://r.jina.ai/http://' + articleURL.replace(/^https?:\/\//,'');
@@ -406,19 +384,6 @@
     if(!txt) txt='조문 본문을 찾지 못했습니다. 전체 자치법규 페이지에서 확인해 주세요.';
     if(body) body.textContent=txt;
     if(modal) modal.classList.add('on');
-  }
-
-  // ★ 추가: 법령 HTML(조문 단건) 텍스트 추출 폴백
-  function extractLawArticleTextFromHTML(html){
-    return html
-      .replace(/<script[\s\S]*?<\/script>/gi,'')
-      .replace(/<style[\s\S]*?<\/style>/gi,'')
-      .replace(/<\/p>|<br\s*\/?>/gi,'\n')
-      .replace(/<[^>]+>/g,'')
-      .replace(/\u00A0/g,' ')
-      .replace(/[ \t]+\n/g,'\n')
-      .replace(/\n{3,}/g,'\n\n')
-      .trim();
   }
 
   /* ===== Result list ===== */
@@ -483,47 +448,33 @@
         btn.addEventListener('click', async function(){
           btn.disabled=true; btn.textContent='불러오는 중…';
           try{
-            // 1) XML 시도
             var xmlURL=buildLawArticleXMLURL(lawId,joText);
             var xmlText=await fetchTextDirectOrProxy(xmlURL);
-            var html='';
-            if(xmlText){
-              try{
-                var dom=new DOMParser().parseFromString(xmlText,'text/xml');
-                var get=function(tag,node){node=node||dom; var el=node.getElementsByTagName(tag)[0]; return el? (el.textContent||'').trim() : ''};
-                var htmlPart=get('조문내용')||'';
-                var hangs=[].slice.call(dom.getElementsByTagName('항')).map(function(h){
-                  var hTitle=(h.getElementsByTagName('항내용')[0]||{}).textContent; hTitle=hTitle? hTitle.trim():'';
-                  var hos=[].slice.call(h.getElementsByTagName('호')).map(function(ho){
-                    var hoText=(ho.getElementsByTagName('호내용')[0]||{}).textContent; hoText=hoText? hoText.trim():'';
-                    var moks=[].slice.call(ho.getElementsByTagName('목')).map(function(m){return (m.textContent||'').trim()});
-                    return {hoText:hoText, moks:moks};
-                  });
-                  return {hTitle:hTitle, hos:hos};
-                });
-                if(htmlPart) html+='<div>'+htmlPart+'</div>';
-                hangs.forEach(function(h){
-                  if(h.hTitle) html+='<div class="hang">'+h.hTitle+'</div>';
-                  h.hos.forEach(function(ho){
-                    if(ho.hoText) html+='<div class="ho">'+ho.hoText+'</div>';
-                    ho.moks.forEach(function(mk){ html+='<div class="mok">'+mk+'</div>'; });
-                  });
-              }catch(e){ html=''; }
-            }
-
-            // 2) XML 실패/제한 → HTML 폴백  ★ 변경
-            if(!xmlText || !html){
-              var htmlURL=buildLawArticleURL(lawId,joText);
-              var htmlDoc=await fetchTextDirectOrProxy(htmlURL);
-              if(htmlDoc && !isFailPage(htmlDoc)){
-                var txt=extractLawArticleTextFromHTML(htmlDoc);
-                if(txt) html='<div>'+txt.replace(/\n/g,'<br>')+'</div>';
-              }
-            }
-
+            if(!xmlText){ if(typeof toast==='function') toast('조문 전문을 불러오지 못했습니다.'); return; }
+            var dom=new DOMParser().parseFromString(xmlText,'text/xml');
+            var get=function(tag,node){node=node||dom; var el=node.getElementsByTagName(tag)[0]; return el? (el.textContent||'').trim() : ''};
+            var htmlPart=get('조문내용')||'';
+            var hangs=[].slice.call(dom.getElementsByTagName('항')).map(function(h){
+              var hTitle=(h.getElementsByTagName('항내용')[0]||{}).textContent; hTitle=hTitle? hTitle.trim():'';
+              var hos=[].slice.call(h.getElementsByTagName('호')).map(function(ho){
+                var hoText=(ho.getElementsByTagName('호내용')[0]||{}).textContent; hoText=hoText? hoText.trim():'';
+                var moks=[].slice.call(ho.getElementsByTagName('목')).map(function(m){return (m.textContent||'').trim()});
+                return {hoText:hoText, moks:moks};
+              });
+              return {hTitle:hTitle, hos:hos};
+            });
             var modal=$('#modal'), body=$('#modalBody'), titleEl=$('#modalTitle');
             var joLabel=title.replace(/.*?(제\d+(?:의\d+)?조).*/,'$1');
             if(titleEl) titleEl.textContent=title.split(' 제')[0]+' '+joLabel+' (전문)';
+            var html='';
+            if(htmlPart) html+='<div>'+htmlPart+'</div>';
+            hangs.forEach(function(h){
+              if(h.hTitle) html+='<div class="hang">'+h.hTitle+'</div>';
+              h.hos.forEach(function(ho){
+                if(ho.hoText) html+='<div class="ho">'+ho.hoText+'</div>';
+                ho.moks.forEach(function(mk){ html+='<div class="mok">'+mk+'</div>'; });
+              });
+            });
             if(!html) html='<div class="mini">조문 본문을 불러오지 못했습니다.</div>';
             if(body) body.innerHTML=html;
             if(modal) modal.classList.add('on');
@@ -596,13 +547,14 @@
     var runBtn=$('#run'); if(runBtn){ runBtn.addEventListener('click', run); }
     var clearBtn=$('#clear'); if(clearBtn){ clearBtn.addEventListener('click', function(){ var resUl=$('#resList'); if(resUl) resUl.innerHTML=''; var input=$('#input'); if(input){ input.value=''; input.focus(); } });}
     var input=$('#input');
+    // Enter로 검색, Shift+Enter는 줄바꿈 — 기존 조건이 그대로 충족 (Enter만 방지)
     if(input){ input.addEventListener('keydown', function(e){ if(e.key==='Enter'&&!e.altKey&&!e.shiftKey&&!e.ctrlKey){ e.preventDefault(); run(); } }); }
     var closeBtn=$('#modalClose'); if(closeBtn){ closeBtn.addEventListener('click', function(){ var m=$('#modal'); if(m) m.classList.remove('on'); }) }
     var modal=$('#modal'); if(modal){ modal.addEventListener('click', function(e){ if(e.target && e.target.id==='modal'){ modal.classList.remove('on'); } }); }
   }
   if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', bind); } else { bind(); }
 
-  // 간단 토스트
+  // ★ 변경(최소): 간단한 토스트 함수 추가(기존 호출과 호환, 기능 변경 없음)
   function toast(msg){
     var t=document.getElementById('toast');
     var m=document.getElementById('toastMsg');
@@ -616,3 +568,5 @@
 </script>
 </body>
 </html>
+
+
