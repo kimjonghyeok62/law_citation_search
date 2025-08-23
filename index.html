@@ -71,7 +71,7 @@
       <div class="row" style="margin-bottom:8px"><div class="label">본문 입력</div></div>
       <textarea id="input" placeholder="예) 조례는 「경기도교육비특별회계 소관 공유재산 관리조례」 제3조에 따라 …"></textarea>
       <div class="row" style="margin-top:10px">
-        <!-- ★ 폴백: 바인딩 실패해도 실행되도록 onclick 추가 -->
+        <!-- 폴백: 바인딩 실패해도 실행되도록 onclick 추가 -->
         <button id="run" class="btn" type="button" onclick="window.__RUN && window.__RUN()">추출·검색</button>
         <button id="clear" class="btn secondary" type="button">지우기</button>
         <span class="mini">Enter(Shift+Enter는 줄바꿈)</span>
@@ -209,11 +209,25 @@
     return s;
   }
 
+  // ★ DRF가 실패해도 이름으로 '법령'인 것을 확정
+  function guessIsLaw(name){
+    var r = refineLawName(displayName(name));
+    if(FORCE_LAW_SET.has(r)) return true;
+    if(/\s*(시행령|시행규칙)$/.test(r)) return true;
+    if(/(법|법률)$/.test(r)) return true;
+    return false;
+  }
+  function guessIsOrdinance(name){
+    var r = refineLawName(displayName(name));
+    if(/조례$/.test(r)) return true;
+    return false;
+  }
+
   async function searchLawRow(lawQuery){
     var refinedQ=refineLawName(lawQuery||''); 
     if(!refinedQ) return null;
 
-    // 강제 법령 처리
+    // 강제 법령 처리(가능하면 DRF 조회, 실패해도 최소 객체 반환)
     if(FORCE_LAW_SET.has(refinedQ)) {
       try{
         var url = new URL(DRF + '/lawSearch.do');
@@ -226,7 +240,6 @@
         var row = root && root.law ? (Array.isArray(root.law)?root.law[0]:root.law) : null;
         if(row && row.법령ID) return row;
       }catch(e){}
-      // DRF 실패해도 ‘법령’임을 알리기 위해 최소 정보 반환
       return { 법령명한글: refinedQ, 법령ID: '', 법령일련번호: '' };
     }
 
@@ -256,7 +269,7 @@
       let row = await tryJson(canon(q), q);
       if(row) return row;
     }
-    return null; // 못 찾으면 자치법규로 폴백
+    return null; // 못 찾으면 호출부에서 휴리스틱으로 분류
   }
 
   /* ===== 본문 정규식 추출 ===== */
@@ -465,7 +478,7 @@
       return;
     }
 
-    // DRF 검색 → 성공: 법령 / 실패: 자치법규
+    // DRF 검색
     var rows=await Promise.all(cites.map(function(it){ return searchLawRow(it.name) }));
     if(resUl) resUl.innerHTML='';
 
@@ -476,8 +489,13 @@
       var baseName=it.displayName;
       var title=it.jo ? (baseName+' 제'+parseInt(it.jo,10)+(it.joi?('의'+parseInt(it.joi,10)):'')+'조') : baseName;
 
-      if(row){ // 법령
-        var lawId=row.법령ID||''; var lsiSeq=row.법령일련번호||'';
+      // ★ 최종 분류: DRF 성공 or 이름 휴리스틱이 '법령'이면 법령
+      var treatAsLaw = !!row || guessIsLaw(it.name);
+      var treatAsOrdin = !treatAsLaw && (guessIsOrdinance(it.name) || !treatAsLaw);
+
+      if(treatAsLaw){
+        var lawId=row? (row.법령ID||'') : '';
+        var lsiSeq=row? (row.법령일련번호||'') : '';
         var fullURL=lawId ? buildLawFullHTMLURL(lawId) : publicLawURL(it.name);
         appendResult(resUl,{
           title:title, lawId:lawId, lsiSeq:lsiSeq,
@@ -485,7 +503,7 @@
           lawName:it.name, joText: it.jo? it : null,
           isOrdinance:false
         });
-      }else{   // 자치법규
+      }else if(treatAsOrdin){
         appendResult(resUl,{
           title:title, lawId:'', lsiSeq:'',
           fullURL:publicOrdinURL(it.name),
@@ -507,9 +525,9 @@
   }
   if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', bind) } else { bind() }
 
-  // ★ 전역 폴백 실행기(인라인 onclick에서 사용)
+  // 전역 폴백 실행기(인라인 onclick에서 사용)
   window.__RUN = run;
-  // ★ 초기화 중 오류가 있어도 사용자에게 안내하고 버튼 폴백은 동작
+  // 초기화 중 오류가 있어도 사용자에게 안내하고 버튼 폴백은 동작
   window.addEventListener('error', function(){ try{ toast('초기화 오류가 있었지만 버튼으로 실행할 수 있습니다.'); }catch(e){} }, { once:true });
 
   function toast(msg){
